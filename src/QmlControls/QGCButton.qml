@@ -1,118 +1,79 @@
-import QtQuick 2.2
-import QtQuick.Controls 1.2
-import QtQuick.Controls.Styles 1.2
-import QtQuick.Controls.Private 1.0
+import QtQuick                  2.3
+import QtQuick.Controls         2.12
+import QtQuick.Controls.Styles  1.4
 
 import QGroundControl.Palette 1.0
 import QGroundControl.ScreenTools 1.0
 
 Button {
-    // primary: true - this is the primary button for this group of buttons
-    property bool primary: false
+    id:             control
+    hoverEnabled:   true
+    topPadding:     _verticalPadding
+    bottomPadding:  _verticalPadding
+    leftPadding:    _horizontalPadding
+    rightPadding:   _horizontalPadding
+    focusPolicy:    Qt.ClickFocus
 
-    property var __qgcPal: QGCPalette { colorGroupEnabled: enabled }
+    property bool   primary:        false                               ///< primary button for a group of buttons
+    property real   pointSize:      ScreenTools.defaultFontPointSize    ///< Point size for button text
+    property bool   showBorder:     qgcPal.globalTheme === QGCPalette.Light
+    property bool   iconLeft:       false
+    property real   backRadius:     0
+    property real   heightFactor:   0.5
+    property string iconSource
 
-    property bool __showHighlight: (pressed | hovered | checked) && !__forceHoverOff
+    property alias wrapMode:            text.wrapMode
+    property alias horizontalAlignment: text.horizontalAlignment
 
-    // This fixes the issue with button hover where if a Button is near the edge oa QQuickWidget you can
-    // move the mouse fast enough such that the MouseArea does not trigger an onExited. This is turn
-    // cause the hover property to not be cleared correctly.
+    property bool   _showHighlight:     pressed | hovered | checked
 
-    property bool __forceHoverOff: false
+    property int _horizontalPadding:    ScreenTools.defaultFontPixelWidth
+    property int _verticalPadding:      Math.round(ScreenTools.defaultFontPixelHeight * heightFactor)
 
-    property int __lastGlobalMouseX: 0
-    property int __lastGlobalMouseY: 0
+    QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
 
-    Connections {
-        target: __behavior
-        onMouseXChanged: {
-            __lastGlobalMouseX = ScreenTools.mouseX()
-            __lastGlobalMouseY = ScreenTools.mouseY()
-        }
-        onMouseYChanged: {
-            __lastGlobalMouseX = ScreenTools.mouseX()
-            __lastGlobalMouseY = ScreenTools.mouseY()
-        }
-        onEntered: { __forceHoverOff; false; hoverTimer.start() }
-        onExited: { __forceHoverOff; false; hoverTimer.stop() }
+    background: Rectangle {
+        id:             backRect
+        implicitWidth:  ScreenTools.implicitButtonWidth
+        implicitHeight: ScreenTools.implicitButtonHeight
+        radius:         backRadius
+        border.width:   showBorder ? 1 : 0
+        border.color:   qgcPal.buttonText
+        color:          _showHighlight ?
+                            qgcPal.buttonHighlight :
+                            (primary ? qgcPal.primaryButton : qgcPal.button)
     }
 
-    Timer {
-        id:         hoverTimer
-        interval:   250
-        repeat:     true
+    contentItem: Item {
+        implicitWidth:  text.implicitWidth + icon.width
+        implicitHeight: text.implicitHeight
+        baselineOffset: text.y + text.baselineOffset
 
-        onTriggered: {
-            if (__lastGlobalMouseX != ScreenTools.mouseX() || __lastGlobalMouseY != ScreenTools.mouseY()) {
-                __forceHoverOff = true
-            } else {
-                __forceHoverOff = false
-            }
+        QGCColoredImage {
+            id:                     icon
+            source:                 control.iconSource
+            height:                 source === "" ? 0 : text.height
+            width:                  height
+            color:                  text.color
+            fillMode:               Image.PreserveAspectFit
+            sourceSize.height:      height
+            anchors.left:           control.iconLeft ? parent.left : undefined
+            anchors.leftMargin:     control.iconLeft ? ScreenTools.defaultFontPixelWidth : undefined
+            anchors.right:          !control.iconLeft ? parent.right : undefined
+            anchors.rightMargin:    !control.iconLeft ? ScreenTools.defaultFontPixelWidth : undefined
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
+        Text {
+            id:                     text
+            anchors.centerIn:       parent
+            antialiasing:           true
+            text:                   control.text
+            font.pointSize:         pointSize
+            font.family:            ScreenTools.normalFontFamily
+            color:                  _showHighlight ?
+                                        qgcPal.buttonHighlightText :
+                                        (primary ? qgcPal.primaryButtonText : qgcPal.buttonText)
         }
     }
-
-    style: ButtonStyle {
-            /*! The padding between the background and the label components. */
-            padding {
-                top: 4
-                left: 4
-                right:  control.menu !== null ? Math.round(TextSingleton.implicitHeight * 0.5) : 4
-                bottom: 4
-            }
-
-            /*! This defines the background of the button. */
-            background: Item {
-                property bool down: control.pressed || (control.checkable && control.checked)
-                implicitWidth: Math.round(TextSingleton.implicitHeight * 4.5)
-                implicitHeight: Math.max(25, Math.round(TextSingleton.implicitHeight * 1.2))
-
-                Rectangle {
-                    anchors.fill: parent
-                    color: __showHighlight ?
-                        control.__qgcPal.buttonHighlight :
-                        (primary ? control.__qgcPal.primaryButton : control.__qgcPal.button)
-                }
-
-                Image {
-                    id: imageItem
-                    visible: control.menu !== null
-                    source: "/qmlimages/arrow-down.png"
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: padding.right
-                    opacity: control.enabled ? 0.6 : 0.5
-                }
-            }
-
-            /*! This defines the label of the button.  */
-            label: Item {
-                implicitWidth: row.implicitWidth
-                implicitHeight: row.implicitHeight
-                baselineOffset: row.y + text.y + text.baselineOffset
-
-                Row {
-                    id: row
-                    anchors.centerIn: parent
-                    spacing: 2
-
-                    Image {
-                        source: control.iconSource
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        id:             text
-                        antialiasing:   true
-                        text:           control.text
-                        font.pixelSize: ScreenTools.defaultFontPixelSize
-
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        color: __showHighlight ?
-                            control.__qgcPal.buttonHighlightText :
-                            (primary ? control.__qgcPal.primaryButtonText : control.__qgcPal.buttonText)
-                    }
-                }
-            }
-        }
 }

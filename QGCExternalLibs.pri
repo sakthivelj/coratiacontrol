@@ -1,35 +1,76 @@
+################################################################################
+#
+# (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+#
+# QGroundControl is licensed according to the terms in the file
+# COPYING.md in the root of the source code directory.
+#
+################################################################################
+
 #
 # [REQUIRED] Add support for <inttypes.h> to Windows.
 #
 WindowsBuild {
-    INCLUDEPATH += libs/lib/msinttypes
+    INCLUDEPATH += libs/msinttypes
 }
 
 #
 # [REQUIRED] Add support for the MAVLink communications protocol.
-# Some logic is involved here in selecting the proper dialect for
-# the selected autopilot system.
 #
-# If the user config file exists, it will be included. If this file
-# specifies the MAVLINK_CONF variable with a MAVLink dialect, support 
-# for it will be compiled in to QGC. It will also create a 
-# QGC_USE_{AUTOPILOT_NAME}_MESSAGES macro for use within the actual code.
-#
-MAVLINKPATH_REL = libs/mavlink/include/mavlink/v1.0
-MAVLINKPATH = $$BASEDIR/$$MAVLINKPATH_REL
-DEFINES += MAVLINK_NO_DATA
+# By default MAVLink dialect is hardwired to arudpilotmega. The reason being
+# the current codebase supports both PX4 and APM flight stack. PX4 flight stack
+# only uses common MAVLink specifications, whereas APM flight stack uses custom
+# MAVLink specifications which adds to common. So by using the adupilotmega dialect
+# QGC can support both in the same codebase.
+
+# Once the mavlink helper routines include support for multiple dialects within
+# a single compiled codebase this hardwiring of dialect can go away. But until then
+# this "workaround" is needed.
+
+# In the mean time, it’s possible to define a completely different dialect by defining the
+# location and name below.
+
+# check for user defined settings in user_config.pri if not already set as qmake argument
+isEmpty(MAVLINKPATH_REL) {
+    exists(user_config.pri):infile(user_config.pri, MAVLINKPATH_REL) {
+        MAVLINKPATH_REL = $$fromfile(user_config.pri, MAVLINKPATH_REL)
+        message($$sprintf("Using user-supplied relativ mavlink path '%1' specified in user_config.pri", $$MAVLINKPATH_REL))
+    } else {
+        MAVLINKPATH_REL = libs/mavlink/include/mavlink/v2.0
+    }
+}
+
+isEmpty(MAVLINKPATH) {
+    exists(user_config.pri):infile(user_config.pri, MAVLINKPATH) {
+        MAVLINKPATH     = $$fromfile(user_config.pri, MAVLINKPATH)
+        message($$sprintf("Using user-supplied mavlink path '%1' specified in user_config.pri", $$MAVLINKPATH))
+    } else {
+        MAVLINKPATH     = $$SOURCE_DIR/$$MAVLINKPATH_REL
+    }
+}
+
+isEmpty(MAVLINK_CONF) {
+    exists(user_config.pri):infile(user_config.pri, MAVLINK_CONF) {
+        MAVLINK_CONF = $$fromfile(user_config.pri, MAVLINK_CONF)
+        message($$sprintf("Using user-supplied mavlink dialect '%1' specified in user_config.pri", $$MAVLINK_CONF))
+    } else {
+        MAVLINK_CONF = ardupilotmega
+    }
+}
+
+# If defined, all APM specific MAVLink messages are disabled
+contains (CONFIG, QGC_DISABLE_APM_MAVLINK) {
+    message("Disable APM MAVLink support")
+    DEFINES += NO_ARDUPILOT_DIALECT
+    CONFIG  += ArdupilotDisabled
+} else {
+    CONFIG  += ArdupilotEnabled
+}
 
 # First we select the dialect, checking for valid user selection
 # Users can override all other settings by specifying MAVLINK_CONF as an argument to qmake
 !isEmpty(MAVLINK_CONF) {
-    message($$sprintf("Using MAVLink dialect '%1' specified at the command line.", $$MAVLINK_CONF))
-}
-# Otherwise they can specify MAVLINK_CONF within user_config.pri
-else:exists(user_config.pri):infile(user_config.pri, MAVLINK_CONF) {
-    MAVLINK_CONF = $$fromfile(user_config.pri, MAVLINK_CONF)
-    !isEmpty(MAVLINK_CONF) {
-        message($$sprintf("Using MAVLink dialect '%1' specified in user_config.pri", $$MAVLINK_CONF))
-    }
+    message($$sprintf("Using MAVLink dialect '%1'.", $$MAVLINK_CONF))
 }
 
 # Then we add the proper include paths dependent on the dialect.
@@ -48,7 +89,6 @@ exists($$MAVLINKPATH/common) {
             error(Only a single mavlink dialect can be specified in MAVLINK_CONF)
         }
     } else {
-        warning("No MAVLink dialect specified, only common messages supported.")
         INCLUDEPATH += $$MAVLINKPATH/common
     }
 } else {
@@ -62,163 +102,104 @@ INCLUDEPATH += libs/eigen
 DEFINES += NOMINMAX
 
 #
-# [REQUIRED] OPMapControl library from OpenPilot. Provides 2D mapping functionality.
-#
-include(libs/opmapcontrol/opmapcontrol_external.pri)
-
+# [REQUIRED] Events submodule
+HEADERS+= \
+	libs/libevents/libevents/libs/cpp/protocol/receive.h \
+	libs/libevents/libevents/libs/cpp/parse/parser.h \
+	libs/libevents/libevents/libs/cpp/generated/events_generated.h \
+	libs/libevents/libevents_definitions.h
+SOURCES += \
+	libs/libevents/libevents/libs/cpp/protocol/receive.cpp \
+	libs/libevents/libevents/libs/cpp/parse/parser.cpp \
+	libs/libevents/definitions.cpp
 INCLUDEPATH += \
-    libs/utils \
-    libs \
-    libs/opmapcontrol
+        libs/libevents \
+        libs/libevents/libs/cpp/parse
+#
+# [REQUIRED] shapelib library
+INCLUDEPATH += libs/shapelib
+SOURCES += \
+    libs/shapelib/shpopen.c \
+    libs/shapelib/safileio.c
 
 #
-# [REQUIRED] QWT plotting library dependency. Provides plotting capabilities.
-#
-include(libs/qwt.pri)
-DEPENDPATH += libs/qwt
-INCLUDEPATH += libs/qwt
-
-#
-# [OPTIONAL] XBee wireless support. This is not necessary for basic serial/UART communications.
-# It's only required for speaking directly to the Xbee using their proprietary API.
-# Unsupported on Mac.
-# Installation on Windows is unnecessary, as we just link to our included .dlls directly.
-# Installing on Linux involves running `make;sudo make install` in `libs/thirdParty/libxbee`
-# Uninstalling from Linux can be done with `sudo make uninstall`.
-#
-XBEE_DEPENDENT_HEADERS += \
-	src/comm/XbeeLinkInterface.h \
-	src/comm/XbeeLink.h \
-	src/comm/HexSpinBox.h \
-	src/ui/XbeeConfigurationWindow.h \
-	src/comm/CallConv.h
-XBEE_DEPENDENT_SOURCES += \
-	src/comm/XbeeLink.cpp \
-	src/comm/HexSpinBox.cpp \
-	src/ui/XbeeConfigurationWindow.cpp
-XBEE_DEFINES = QGC_XBEE_ENABLED
-
-contains(DEFINES, DISABLE_XBEE) {
-	message("Skipping support for native XBee API (manual override from command line)")
-	DEFINES -= DISABLE_XBEE
-# Otherwise the user can still disable this feature in the user_config.pri file.
-} else:exists(user_config.pri):infile(user_config.pri, DEFINES, DISABLE_XBEE) {
-    message("Skipping support for native XBee API (manual override from user_config.pri)")
-} else:LinuxBuild {
-        linux-g++-64 {
-            message("Skipping support for XBee API (64-bit Linux builds not supported)")
-        } else:exists(/usr/include/xbee.h) {
-		message("Including support for XBee API")
-
-		HEADERS += $$XBEE_DEPENDENT_HEADERS
-		SOURCES += $$XBEE_DEPENDENT_SOURCES
-		DEFINES += $$XBEE_DEFINES
-		LIBS += -L/usr/lib -lxbee
-	} else {
-		warning("Skipping support for XBee API (missing libraries, see README)")
-	}
-} else:WindowsBuild {
-	message("Including support for XBee API")
-	HEADERS += $$XBEE_DEPENDENT_HEADERS
-	SOURCES += $$XBEE_DEPENDENT_SOURCES
-	DEFINES += $$XBEE_DEFINES
-	INCLUDEPATH += libs/thirdParty/libxbee
-        LIBS += -l$$BASEDIR/libs/thirdParty/libxbee/lib/libxbee
+# [REQUIRED] zlib library
+WindowsBuild {
+    INCLUDEPATH +=  $$SOURCE_DIR/libs/zlib/windows/include
+    LIBS += -L$$SOURCE_DIR/libs/zlib/windows/lib
+    LIBS += -lzlibstat
 } else {
-	message("Skipping support for XBee API (unsupported platform)")
+    LIBS += -lz
 }
 
 #
-# [OPTIONAL] Magellan 3DxWare library. Provides support for 3DConnexion's 3D mice.
-#
-contains(DEFINES, DISABLE_3DMOUSE) {
-	message("Skipping support for 3DConnexion mice (manual override from command line)")
-	DEFINES -= DISABLE_3DMOUSE
-# Otherwise the user can still disable this feature in the user_config.pri file.
-} else:exists(user_config.pri):infile(user_config.pri, DEFINES, DISABLE_3DMOUSE) {
-    message("Skipping support for 3DConnexion mice (manual override from user_config.pri)")
-} else:LinuxBuild {
-	exists(/usr/local/lib/libxdrvlib.so) {
-		message("Including support for 3DConnexion mice")
+# [REQUIRED] LZMA decompression library
+HEADERS+= \
+    libs/xz-embedded/linux/include/linux/xz.h \
+    libs/xz-embedded/linux/lib/xz/xz_lzma2.h \
+    libs/xz-embedded/linux/lib/xz/xz_private.h \
+    libs/xz-embedded/linux/lib/xz/xz_stream.h \
+    libs/xz-embedded/userspace/xz_config.h
+SOURCES += \
+    libs/xz-embedded/linux/lib/xz/xz_crc32.c \
+    libs/xz-embedded/linux/lib/xz/xz_crc64.c \
+    libs/xz-embedded/linux/lib/xz/xz_dec_lzma2.c \
+    libs/xz-embedded/linux/lib/xz/xz_dec_stream.c
+INCLUDEPATH += \
+    libs/xz-embedded/userspace \
+    libs/xz-embedded/linux/include/linux
+DEFINES += XZ_DEC_ANY_CHECK XZ_USE_CRC64
 
-                DEFINES += \
-		QGC_MOUSE_ENABLED_LINUX \
-                ParameterCheck
-                # Hack: Has to be defined for magellan usage
-
-		HEADERS += src/input/Mouse6dofInput.h
-		SOURCES += src/input/Mouse6dofInput.cpp
-		LIBS += -L/usr/local/lib/ -lxdrvlib
-	} else {
-		warning("Skipping support for 3DConnexion mice (missing libraries, see README)")
-	}
-} else:WindowsBuild {
-    message("Including support for 3DConnexion mice")
-
-    DEFINES += QGC_MOUSE_ENABLED_WIN
-
-    INCLUDEPATH += libs/thirdParty/3DMouse/win
-
-    HEADERS += \
-        libs/thirdParty/3DMouse/win/I3dMouseParams.h \
-        libs/thirdParty/3DMouse/win/MouseParameters.h \
-        libs/thirdParty/3DMouse/win/Mouse3DInput.h \
-        src/input/Mouse6dofInput.h
-
-    SOURCES += \
-        libs/thirdParty/3DMouse/win/MouseParameters.cpp \
-        libs/thirdParty/3DMouse/win/Mouse3DInput.cpp \
-        src/input/Mouse6dofInput.cpp
-} else {
-	message("Skipping support for 3DConnexion mice (unsupported platform)")
-}
-
-#
-# [OPTIONAL] Opal RT-LAB Library. Provides integration with Opal-RT's RT-LAB simulator.
-#
-contains(DEFINES, DISABLE_RTLAB) {
-	message("Skipping support for RT-LAB (manual override from command line)")
-	DEFINES -= DISABLE_RTLAB
-# Otherwise the user can still disable this feature in the user_config.pri file.
-} else:exists(user_config.pri):infile(user_config.pri, DEFINES, DISABLE_RTLAB) {
-    message("Skipping support for RT-LAB (manual override from user_config.pri)")
-} else:WindowsBuild {
-	exists(src/lib/opalrt/OpalApi.h) : exists(C:/OPAL-RT/RT-LAB7.2.4/Common/bin) {
-		message("Including support for RT-LAB")
-
-		DEFINES += QGC_RTLAB_ENABLED
-
-		INCLUDEPATH +=
-			src/lib/opalrt
-			libs/lib/opal/include \
-
-		FORMS += src/ui/OpalLinkSettings.ui
-
-		HEADERS += \
-			src/comm/OpalRT.h \
-			src/comm/OpalLink.h \
-			src/comm/Parameter.h \
-			src/comm/QGCParamID.h \
-			src/comm/ParameterList.h \
-			src/ui/OpalLinkConfigurationWindow.h
-
-		SOURCES += \
-			src/comm/OpalRT.cc \
-			src/comm/OpalLink.cc \
-			src/comm/Parameter.cc \
-			src/comm/QGCParamID.cc \
-			src/comm/ParameterList.cc \
-			src/ui/OpalLinkConfigurationWindow.cc
-
-		LIBS += \
-			-LC:/OPAL-RT/RT-LAB7.2.4/Common/bin \
-			-lOpalApi
-	} else {
-		warning("Skipping support for RT-LAB (missing libraries, see README)")
-	}
-} else {
-    message("Skipping support for RT-LAB (unsupported platform)")
-}
+# [REQUIRED] QMDNS Engine
+HEADERS+= \
+    libs/qmdnsengine_export.h \
+    libs/qmdnsengine/src/src/bitmap_p.h \
+    libs/qmdnsengine/src/src/browser_p.h \
+    libs/qmdnsengine/src/src/cache_p.h \
+    libs/qmdnsengine/src/src/hostname_p.h \
+    libs/qmdnsengine/src/src/message_p.h \
+    libs/qmdnsengine/src/src/prober_p.h \
+    libs/qmdnsengine/src/src/provider_p.h \
+    libs/qmdnsengine/src/src/query_p.h \
+    libs/qmdnsengine/src/src/record_p.h \
+    libs/qmdnsengine/src/src/resolver_p.h \
+    libs/qmdnsengine/src/src/server_p.h \
+    libs/qmdnsengine/src/src/service_p.h \
+    libs/qmdnsengine/src/include/qmdnsengine/abstractserver.h \
+    libs/qmdnsengine/src/include/qmdnsengine/bitmap.h \
+    libs/qmdnsengine/src/include/qmdnsengine/browser.h \
+    libs/qmdnsengine/src/include/qmdnsengine/cache.h \
+    libs/qmdnsengine/src/include/qmdnsengine/dns.h \
+    libs/qmdnsengine/src/include/qmdnsengine/hostname.h \
+    libs/qmdnsengine/src/include/qmdnsengine/mdns.h \
+    libs/qmdnsengine/src/include/qmdnsengine/message.h \
+    libs/qmdnsengine/src/include/qmdnsengine/prober.h \
+    libs/qmdnsengine/src/include/qmdnsengine/provider.h \
+    libs/qmdnsengine/src/include/qmdnsengine/query.h \
+    libs/qmdnsengine/src/include/qmdnsengine/record.h \
+    libs/qmdnsengine/src/include/qmdnsengine/resolver.h \
+    libs/qmdnsengine/src/include/qmdnsengine/server.h \
+    libs/qmdnsengine/src/include/qmdnsengine/service.h
+SOURCES += \
+    libs/qmdnsengine/src/src/abstractserver.cpp \
+    libs/qmdnsengine/src/src/bitmap.cpp \
+    libs/qmdnsengine/src/src/browser.cpp \
+    libs/qmdnsengine/src/src/cache.cpp \
+    libs/qmdnsengine/src/src/dns.cpp \
+    libs/qmdnsengine/src/src/hostname.cpp \
+    libs/qmdnsengine/src/src/mdns.cpp \
+    libs/qmdnsengine/src/src/message.cpp \
+    libs/qmdnsengine/src/src/prober.cpp \
+    libs/qmdnsengine/src/src/provider.cpp \
+    libs/qmdnsengine/src/src/query.cpp \
+    libs/qmdnsengine/src/src/record.cpp \
+    libs/qmdnsengine/src/src/resolver.cpp \
+    libs/qmdnsengine/src/src/server.cpp \
+    libs/qmdnsengine/src/src/service.cpp
+INCLUDEPATH += \
+    libs/ \
+    libs/qmdnsengine/src/include/ \
+    libs/qmdnsengine/src/src/
 
 #
 # [REQUIRED] SDL dependency. Provides joystick/gamepad support.
@@ -227,56 +208,55 @@ contains(DEFINES, DISABLE_RTLAB) {
 #
 MacBuild {
     INCLUDEPATH += \
-        $$BASEDIR/libs/lib/Frameworks/SDL.framework/Headers
-
+        $$SOURCE_DIR/libs/Frameworks/SDL2.framework/Headers
     LIBS += \
-        -F$$BASEDIR/libs/lib/Frameworks \
-        -framework SDL
+        -F$$SOURCE_DIR/libs/Frameworks \
+        -framework SDL2
 } else:LinuxBuild {
-	PKGCONFIG = sdl
+    PKGCONFIG = sdl2
 } else:WindowsBuild {
-	INCLUDEPATH += \
-        $$BASEDIR/libs/lib/sdl/msvc/include \
-
-	LIBS += \
-        -L$$BASEDIR/libs/lib/sdl/msvc/lib \
-        -lSDLmain \
-        -lSDL
+    INCLUDEPATH += $$SOURCE_DIR/libs/sdl2/msvc/include
+    INCLUDEPATH += $$SOURCE_DIR/libs/OpenSSL/Windows/x64/include
+    LIBS += -L$$SOURCE_DIR/libs/sdl2/msvc/lib/x64
+    LIBS += -lSDL2
 }
 
-##
-# [OPTIONAL] Speech synthesis library support.
-# Can be forcibly disabled by adding a `DEFINES+=DISABLE_SPEECH` argument to qmake.
-# Linux support requires the eSpeak speech synthesizer (espeak).
-# Mac support is provided in Snow Leopard and newer (10.6+)
-# Windows is supported as of Windows 7
-#
-contains (DEFINES, DISABLE_SPEECH) {
-	message("Skipping support for speech output (manual override from command line)")
-	DEFINES -= DISABLE_SPEECH
-# Otherwise the user can still disable this feature in the user_config.pri file.
-} else:exists(user_config.pri):infile(user_config.pri, DEFINES, DISABLE_SPEECH) {
-    message("Skipping support for speech output (manual override from user_config.pri)")
-} else:LinuxBuild {
-	exists(/usr/include/espeak) | exists(/usr/local/include/espeak) {
-		message("Including support for speech output")
-		DEFINES += QGC_SPEECH_ENABLED
-		LIBS += \
-		-lespeak
-	} else {
-		warning("Skipping support for speech output (missing libraries, see README)")
-	}
+# Include Android OpenSSL libs
+AndroidBuild {
+    include($$SOURCE_DIR/libs/OpenSSL/android_openssl/openssl.pri)
+    message("ANDROID_EXTRA_LIBS")
+    message($$ANDROID_TARGET_ARCH)
+    message($$ANDROID_EXTRA_LIBS)
 }
-# Mac support is built into OS 10.6+.
-else:MacBuild {
-    message("Including support for speech output")
-    DEFINES += QGC_SPEECH_ENABLED
-}
-# Windows supports speech through native API.
-else:WindowsBuild {
-    message("Including support for speech output")
-    DEFINES += QGC_SPEECH_ENABLED
-    LIBS    += -lOle32
+
+# Pairing
+contains(DEFINES, QGC_ENABLE_PAIRING) {
+    MacBuild {
+        #- Pairing is generally not supported on macOS. This is here solely for development.
+        exists(/usr/local/Cellar/openssl/1.0.2t/include) {
+            INCLUDEPATH += /usr/local/Cellar/openssl/1.0.2t/include
+            LIBS += -L/usr/local/Cellar/openssl/1.0.2t/lib
+            LIBS += -lcrypto
+        } else {
+            # There is some circular reference settings going on between QGCExternalLibs.pri and gqgroundcontrol.pro.
+            # So this duplicates some of the enable/disable logic which would normally be in qgroundcontrol.pro.
+            DEFINES -= QGC_ENABLE_PAIRING
+        }
+    } else:WindowsBuild {
+        #- Pairing is not supported on Windows
+        DEFINES -= QGC_ENABLE_PAIRING
+    } else {
+        LIBS += -lcrypto
+        AndroidBuild {
+            contains(QT_ARCH, arm) {
+                LIBS += $$ANDROID_EXTRA_LIBS
+                INCLUDEPATH += $$SOURCE_DIR/libs/OpenSSL/Android/arch-armeabi-v7a/include
+            } else {
+                LIBS += $$ANDROID_EXTRA_LIBS
+                INCLUDEPATH += $$SOURCE_DIR/libs/OpenSSL/Android/arch-x86/include
+            }
+        }
+    }
 }
 
 #
@@ -296,3 +276,53 @@ contains (DEFINES, DISABLE_ZEROCONF) {
     message("Skipping support for Zeroconf (unsupported platform)")
 }
 
+#
+# [OPTIONAL] AirMap Support
+#
+contains (DEFINES, DISABLE_AIRMAP) {
+    message("Skipping support for AirMap (manual override from command line)")
+# Otherwise the user can still disable this feature in the user_config.pri file.
+} else:exists(user_config.pri):infile(user_config.pri, DEFINES, DISABLE_AIRMAP) {
+    message("Skipping support for AirMap (manual override from user_config.pri)")
+} else {
+    AIRMAP_PLATFORM_SDK_PATH    = $${OUT_PWD}/libs/airmap-platform-sdk
+    AIRMAP_QT_PATH              = Qt.$${QT_MAJOR_VERSION}.$${QT_MINOR_VERSION}
+    message("Including support for AirMap")
+    MacBuild {
+        exists("$${AIRMAPD_PATH}/macOS/$$AIRMAP_QT_PATH") {
+            message("Including support for AirMap for macOS")
+            LIBS += -L$${AIRMAPD_PATH}/macOS/$$AIRMAP_QT_PATH -lairmap-qt
+            DEFINES += QGC_AIRMAP_ENABLED
+        }
+    } else:LinuxBuild {
+        #-- Download and install platform-sdk libs and headers iff they're not already in the build directory
+        AIRMAP_PLATFORM_SDK_URL = "https://github.com/airmap/platform-sdk/releases/download/2.0/airmap-platform-sdk-2.0.0-Linux.deb"
+        AIRMAP_PLATFORM_SDK_FILEPATH = "$${OUT_PWD}/airmap-platform-sdk.deb"
+        AIRMAP_PLATFORM_SDK_INSTALL_DIR = "tmp"
+
+        airmap_platform_sdk_install.target = $${AIRMAP_PLATFORM_SDK_PATH}/include/airmap
+        airmap_platform_sdk_install.commands = \
+            rm -rf $${AIRMAP_PLATFORM_SDK_PATH} && \
+            mkdir -p "$${AIRMAP_PLATFORM_SDK_PATH}/linux/$${AIRMAP_QT_PATH}" && \
+            mkdir -p "$${AIRMAP_PLATFORM_SDK_PATH}/include/airmap" && \
+            mkdir -p "$${AIRMAP_PLATFORM_SDK_PATH}/$${AIRMAP_PLATFORM_SDK_INSTALL_DIR}" && \
+            curl --location --output "$${AIRMAP_PLATFORM_SDK_FILEPATH}" "$${AIRMAP_PLATFORM_SDK_URL}" && \
+            ar p "$${AIRMAP_PLATFORM_SDK_FILEPATH}" data.tar.gz | tar xvz -C "$${AIRMAP_PLATFORM_SDK_PATH}/$${AIRMAP_PLATFORM_SDK_INSTALL_DIR}/" --strip-components=1 && \
+            mv -u "$${AIRMAP_PLATFORM_SDK_PATH}/$${AIRMAP_PLATFORM_SDK_INSTALL_DIR}/usr/lib/x86_64-linux-gnu/*" "$${AIRMAP_PLATFORM_SDK_PATH}/linux/$${AIRMAP_QT_PATH}/" && \
+            mv -u "$${AIRMAP_PLATFORM_SDK_PATH}/$${AIRMAP_PLATFORM_SDK_INSTALL_DIR}/usr/include/airmap/*" "$${AIRMAP_PLATFORM_SDK_PATH}/include/airmap/" && \
+            rm -rf "$${AIRMAP_PLATFORM_SDK_PATH}/$${AIRMAP_PLATFORM_SDK_INSTALL_DIR}" && \
+            rm "$${AIRMAP_PLATFORM_SDK_FILEPATH}"
+        airmap_platform_sdk_install.depends =
+        QMAKE_EXTRA_TARGETS += airmap_platform_sdk_install
+        PRE_TARGETDEPS += $$airmap_platform_sdk_install.target
+
+        LIBS += -L$${AIRMAP_PLATFORM_SDK_PATH}/linux/$${AIRMAP_QT_PATH} -lairmap-cpp
+        DEFINES += QGC_AIRMAP_ENABLED
+    } else {
+        message("Skipping support for Airmap (unsupported platform)")
+    }
+    contains (DEFINES, QGC_AIRMAP_ENABLED) {
+        INCLUDEPATH += \
+            $${AIRMAP_PLATFORM_SDK_PATH}/include
+    }
+}

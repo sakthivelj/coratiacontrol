@@ -1,107 +1,93 @@
-/*=====================================================================
+/****************************************************************************
+ *
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
 
-PIXHAWK Micro Air Vehicle Flying Robotics Toolkit
-
-(c) 2009, 2015 PIXHAWK PROJECT  <http://pixhawk.ethz.ch>
-
-This file is part of the PIXHAWK project
-
-    PIXHAWK is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    PIXHAWK is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with PIXHAWK. If not, see <http://www.gnu.org/licenses/>.
-
-======================================================================*/
-
-/// @file
-///     @author Lorenz Meier <mavteam@student.ethz.ch>
-
-#ifndef _LINKMANAGER_H_
-#define _LINKMANAGER_H_
+#pragma once
 
 #include <QList>
 #include <QMultiMap>
 #include <QMutex>
 
+#include <limits>
+
 #include "LinkConfiguration.h"
 #include "LinkInterface.h"
 #include "QGCLoggingCategory.h"
-
-// Links
-#ifndef __ios__
-#include "SerialLink.h"
-#endif
-#include "UDPLink.h"
-#include "TCPLink.h"
-
-#ifdef QT_DEBUG
-#include "MockLink.h"
-#endif
-
-#include "ProtocolInterface.h"
-#include "QGCSingleton.h"
+#include "QGCToolbox.h"
 #include "MAVLinkProtocol.h"
+#if !defined(__mobile__)
+#include "LogReplayLink.h"
+#include "UdpIODevice.h"
+#endif
+#include "QmlObjectListModel.h"
+
+#ifndef NO_SERIAL_LINK
+    #include "SerialLink.h"
+#endif
 
 Q_DECLARE_LOGGING_CATEGORY(LinkManagerLog)
+Q_DECLARE_LOGGING_CATEGORY(LinkManagerVerboseLog)
 
-class LinkManagerTest;
+class QGCApplication;
+class UDPConfiguration;
+class AutoConnectSettings;
+class LogReplayLink;
 
-/// Manage communication links
+/// @brief Manage communication links
 ///
 /// The Link Manager organizes the physical Links. It can manage arbitrary
 /// links and takes care of connecting them as well assigning the correct
 /// protocol instance to transport the link data into the application.
 
-class LinkManager : public QGCSingleton
+class LinkManager : public QGCTool
 {
     Q_OBJECT
-    DECLARE_QGC_SINGLETON(LinkManager, LinkManager)
-
-    /// Unit Test has access to private constructor/destructor
-    friend class LinkManagerTest;
 
 public:
+    LinkManager(QGCApplication* app, QGCToolbox* toolbox);
+    ~LinkManager();
 
+    Q_PROPERTY(bool                 isBluetoothAvailable    READ isBluetoothAvailable   CONSTANT)
+    Q_PROPERTY(QmlObjectListModel*  linkConfigurations      READ _qmlLinkConfigurations CONSTANT)
+    Q_PROPERTY(QStringList          linkTypeStrings         READ linkTypeStrings        CONSTANT)
+    Q_PROPERTY(QStringList          serialBaudRates         READ serialBaudRates        CONSTANT)
+    Q_PROPERTY(QStringList          serialPortStrings       READ serialPortStrings      NOTIFY commPortStringsChanged)
+    Q_PROPERTY(QStringList          serialPorts             READ serialPorts            NOTIFY commPortsChanged)
 
-    /*!
-      Add a new link configuration setting to the list
-      @param[in] link An instance of the link setting.
-    */
-    void addLinkConfiguration(LinkConfiguration* link);
+    /// Create/Edit Link Configuration
+    Q_INVOKABLE LinkConfiguration*  createConfiguration         (int type, const QString& name);
+    Q_INVOKABLE LinkConfiguration*  startConfigurationEditing   (LinkConfiguration* config);
+    Q_INVOKABLE void                cancelConfigurationEditing  (LinkConfiguration* config) { delete config; }
+    Q_INVOKABLE bool                endConfigurationEditing     (LinkConfiguration* config, LinkConfiguration* editedConfig);
+    Q_INVOKABLE bool                endCreateConfiguration      (LinkConfiguration* config);
+    Q_INVOKABLE void                removeConfiguration         (LinkConfiguration* config);
 
-    /*!
-      Removes (and deletes) an existing link configuration setting from the list
-      @param[in] link An instance of the link setting.
-    */
-    void removeLinkConfiguration(LinkConfiguration* link);
+    // Called to signal app shutdown. Disconnects all links while turning off auto-connect.
+    Q_INVOKABLE void shutdown(void);
 
-    /// Load list of link configurations from disk
+    Q_INVOKABLE LogReplayLink* startLogReplay(const QString& logFile);
+
+    // Property accessors
+
+    bool isBluetoothAvailable       (void);
+
+    QList<SharedLinkInterfacePtr>   links               (void) { return _rgLinks; }
+    QStringList                     linkTypeStrings     (void) const;
+    QStringList                     serialBaudRates     (void);
+    QStringList                     serialPortStrings   (void);
+    QStringList                     serialPorts         (void);
+
     void loadLinkConfigurationList();
-
-    /// Save list of link configurations from disk
     void saveLinkConfigurationList();
-
-    /// Get a list of the configured links. This is the list of configured links that can be used by QGC.
-    const QList<LinkConfiguration*> getLinkConfigurationList();
 
     /// Suspend automatic confguration updates (during link maintenance for instance)
     void suspendConfigurationUpdates(bool suspend);
 
-    /// Returns list of all links
-    const QList<LinkInterface*> getLinks();
-
-    // Returns list of all serial links
-#ifndef __ios__
-    const QList<SerialLink*> getSerialLinks();
-#endif
     /// Sets the flag to suspend the all new connections
     ///     @param reason User visible reason to suspend connections
     void setConnectionsSuspended(QString reason);
@@ -110,80 +96,102 @@ public:
     void setConnectionsAllowed(void) { _connectionsSuspended = false; }
 
     /// Creates, connects (and adds) a link  based on the given configuration instance.
-    LinkInterface* createConnectedLink(LinkConfiguration* config);
+    bool createConnectedLink(SharedLinkConfigurationPtr& config, bool isPX4Flow = false);
 
-    /// Creates, connects (and adds) a link  based on the given configuration name.
-    LinkInterface* createConnectedLink(const QString& name);
+    // This should only be used by Qml code
+    Q_INVOKABLE void createConnectedLink(LinkConfiguration* config);
 
-    /// Returns true if the link manager is holding this link
+    /// Returns pointer to the mavlink forwarding link, or nullptr if it does not exist
+    SharedLinkInterfacePtr mavlinkForwardingLink();
+
+    void disconnectAll(void);
+
+#ifdef QT_DEBUG
+    // Only used by unit test tp restart after a shutdown
+    void restart(void) { setConnectionsAllowed(); }
+#endif
+
+    // Override from QGCTool
+    virtual void setToolbox(QGCToolbox *toolbox);
+
+    static constexpr uint8_t invalidMavlinkChannel(void) { return std::numeric_limits<uint8_t>::max(); }
+
+    /// Allocates a mavlink channel for use
+    /// @return Mavlink channel index, invalidMavlinkChannel() for no channels available
+    uint8_t allocateMavlinkChannel(void);
+    void freeMavlinkChannel(uint8_t channel);
+
+    /// If you are going to hold a reference to a LinkInterface* in your object you must reference count it
+    /// by using this method to get access to the shared pointer.
+    SharedLinkInterfacePtr sharedLinkInterfacePointerForLink(LinkInterface* link, bool ignoreNull=false);
+
     bool containsLink(LinkInterface* link);
-    
-    /// Returns the QSharedPointer for this link. You must use SharedLinkInterface if you are going to
-    /// keep references to a link in a thread other than the main ui thread.
-    SharedLinkInterface& sharedPointerForLink(LinkInterface* link);
 
-    /// Re-connects all existing links
-    bool connectAll();
+    SharedLinkConfigurationPtr addConfiguration(LinkConfiguration* config);
 
-    /// Disconnects all existing links
-    bool disconnectAll();
+    void startAutoConnectedLinks(void);
 
-    /// Connect the specified link
-    bool connectLink(LinkInterface* link);
-
-    /// Disconnect the specified link
-    bool disconnectLink(LinkInterface* link);
-    
-    /// Returns true if there are any connected links
-    bool anyConnectedLinks(void);
-    
-    // The following APIs are public but should not be called in normal use. The are mainly exposed
-    // here for unit test code.
-    void _deleteLink(LinkInterface* link);
-    void _addLink(LinkInterface* link);
+    static const char*  settingsGroup;
 
 signals:
-    void newLink(LinkInterface* link);
-    void linkDeleted(LinkInterface* link);
-    void linkConnected(LinkInterface* link);
-    void linkDisconnected(LinkInterface* link);
-    void linkConfigurationChanged();
+    void commPortStringsChanged();
+    void commPortsChanged();
 
 private slots:
-    void _linkConnected(void);
-    void _linkDisconnected(void);
+    void _linkDisconnected  (void);
 
 private:
-    /// All access to LinkManager is through LinkManager::instance
-    LinkManager(QObject* parent = NULL);
-    ~LinkManager();
-    
-    virtual void _shutdown(void);
+    QmlObjectListModel* _qmlLinkConfigurations      (void) { return &_qmlConfigurations; }
+    bool                _connectionsSuspendedMsg    (void);
+    void                _updateAutoConnectLinks     (void);
+    void                _updateSerialPorts          (void);
+    void                _removeConfiguration        (LinkConfiguration* config);
+    void                _addUDPAutoConnectLink      (void);
+    void                _addZeroConfAutoConnectLink (void);
+    void                _addMAVLinkForwardingLink   (void);
+    bool                _isSerialPortConnected      (void);
 
-    bool _connectionsSuspendedMsg(void);
-    void _updateConfigurationList(void);
-#ifndef __ios__
-    SerialConfiguration* _findSerialConfiguration(const QString& portName);
+#ifndef NO_SERIAL_LINK
+    bool                _portAlreadyConnected       (const QString& portName);
 #endif
-    QList<LinkConfiguration*>   _linkConfigurations;    ///< List of configured links
-    
-    /// List of available links kept as QSharedPointers. We use QSharedPointer since
-    /// there are other objects that maintain copies of these links in other threads.
-    /// The reference counting allows for orderly deletion.
-    QList<SharedLinkInterface>  _links;
-    
-    QMutex                      _linkListMutex;         ///< Mutex for thread safe access to _links list
 
-    bool    _configUpdateSuspended;                     ///< true: stop updating configuration list
-    bool    _configurationsLoaded;                      ///< true: Link configurations have been loaded
-    bool    _connectionsSuspended;                      ///< true: all new connections should not be allowed
-    QString _connectionsSuspendedReason;                ///< User visible reason for suspension
-#ifndef __ios__
-    QTimer  _portListTimer;
+    bool                                _configUpdateSuspended;                     ///< true: stop updating configuration list
+    bool                                _configurationsLoaded;                      ///< true: Link configurations have been loaded
+    bool                                _connectionsSuspended;                      ///< true: all new connections should not be allowed
+    QString                             _connectionsSuspendedReason;                ///< User visible reason for suspension
+    QTimer                              _portListTimer;
+    uint32_t                            _mavlinkChannelsUsedBitMask;
+
+    AutoConnectSettings*                _autoConnectSettings;
+    MAVLinkProtocol*                    _mavlinkProtocol;
+
+    QList<SharedLinkInterfacePtr>       _rgLinks;
+    QList<SharedLinkConfigurationPtr>   _rgLinkConfigs;
+    QString                             _autoConnectRTKPort;
+    QmlObjectListModel                  _qmlConfigurations;
+
+    QMap<QString, int>                  _autoconnectPortWaitList;               ///< key: QGCSerialPortInfo::systemLocation, value: wait count
+    QStringList                         _commPortList;
+    QStringList                         _commPortDisplayList;
+
+#ifndef NO_SERIAL_LINK
+    QList<SerialLink*>                  _activeLinkCheckList;                   ///< List of links we are waiting for a vehicle to show up on
 #endif
-    uint32_t _mavlinkChannelsUsedBitMask;
-    
-    SharedLinkInterface _nullSharedLink;
+
+    // NMEA GPS device for GCS position
+#ifndef __mobile__
+#ifndef NO_SERIAL_LINK
+    QString                             _nmeaDeviceName;
+    QSerialPort*                        _nmeaPort;
+    uint32_t                            _nmeaBaud;
+    UdpIODevice                         _nmeaSocket;
+#endif
+#endif
+
+    static const char*  _defaultUDPLinkName;
+    static const char*  _mavlinkForwardingLinkName;
+    static const int    _autoconnectUpdateTimerMSecs;
+    static const int    _autoconnectConnectDelayMSecs;
+
 };
 
-#endif

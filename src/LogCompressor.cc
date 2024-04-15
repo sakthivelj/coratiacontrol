@@ -1,30 +1,18 @@
-/*===================================================================
-QGroundControl Open Source Ground Control Station
+/****************************************************************************
+ *
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
 
-(c) 2009, 2010 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
-
-This file is part of the QGROUNDCONTROL project
-
-	QGROUNDCONTROL is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
-
-	QGROUNDCONTROL is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	You should have received a copy of the GNU General Public License
-	along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
-
-======================================================================*/
 
 /**
  * @file
- *   @brief Implementation of class LogCompressor. This class reads in a file containing messages and translates it into a tab-delimited CSV file.
+ *   @brief Implementation of class LogCompressor.
+ *          This class reads in a file containing messages and translates it into a tab-delimited CSV file.
  *   @author Lorenz Meier <mavteam@student.ethz.ch>
- *
  */
 
 #include "LogCompressor.h"
@@ -67,7 +55,7 @@ void LogCompressor::run()
 
     QString outFileName;
 
-    QStringList parts = QFileInfo(infile.fileName()).absoluteFilePath().split(".", QString::SkipEmptyParts);
+    QStringList parts = QFileInfo(infile.fileName()).absoluteFilePath().split(".", Qt::SkipEmptyParts);
 
     parts.replace(0, parts.first() + "_compressed");
     parts.replace(parts.size()-1, "txt");
@@ -82,7 +70,7 @@ void LogCompressor::run()
 
 
 	// First we search the input file through keySearchLimit number of lines
-	// looking for variables. This is neccessary before CSV files require
+	// looking for variables. This is necessary before CSV files require
 	// the same number of fields for every line.
 	const unsigned int keySearchLimit = 15000;
 	unsigned int keyCounter = 0;
@@ -172,7 +160,7 @@ void LogCompressor::run()
             // Fill holes if necessary
             if (holeFillingEnabled) {
                 int index = 0;
-                foreach (QString str, list) {
+                foreach (const QString& str, list) {
                     if (str == "" || str == "NaN") {
                         list.replace(index, lastList.at(index));
                     }
@@ -209,12 +197,12 @@ void LogCompressor::startCompression(bool holeFilling)
 	start();
 }
 
-bool LogCompressor::isFinished()
+bool LogCompressor::isFinished() const
 {
 	return !running;
 }
 
-int LogCompressor::getCurrentLine()
+int LogCompressor::getCurrentLine() const
 {
 	return currentDataLine;
 }

@@ -1,111 +1,75 @@
-/*=====================================================================
- 
- QGroundControl Open Source Ground Control Station
- 
- (c) 2009, 2014 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- 
- This file is part of the QGROUNDCONTROL project
- 
- QGROUNDCONTROL is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
- 
- QGROUNDCONTROL is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
- 
- ======================================================================*/
+﻿/****************************************************************************
+ *
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
 
-/// @file
-///     @author Don Gagne <don@thegagnes.com>
-
-#ifndef Bootloader_H
-#define Bootloader_H
+#pragma once
 
 #include "FirmwareImage.h"
 
-#include "qextserialport.h"
+#include <QSerialPort>
 
 #include <stdint.h>
 
-/// Bootloader Utility routines. Works with PX4 bootloader and 3DR Radio bootloader.
+/// Bootloader Utility routines. Works with PX4 and 3DR Radio bootloaders.
 class Bootloader : public QObject
 {
     Q_OBJECT
     
 public:
-    explicit Bootloader(QObject *parent = 0);
+    explicit Bootloader(bool sikRadio, QObject *parent = 0);
     
-    /// @brief Returns the error message associated with the last failed call to one of the bootloader
-    ///         utility routine below.
     QString errorString(void) { return _errorString; }
     
-    /// @brief Opens a port to the bootloader
-    bool open(QextSerialPort* port, const QString portName);
-    
-    /// @brief Read a PROTO_SYNC response from the bootloader
-    /// @return true: Valid sync response was received
-    bool sync(QextSerialPort* port);
-    
-    /// @brief Erases the current program
-    bool erase(QextSerialPort* port);
-    
-    /// @brief Program the board with the specified image
-    bool program(QextSerialPort* port, const FirmwareImage* image);
-    
-    /// @brief Verify the board flash.
-    bool verify(QextSerialPort* port, const FirmwareImage* image);
-    
-    /// @brief Retrieve a set of board info from the bootloader of PX4 FMU and PX4 Flow boards
-    ///     @param bootloaderVersion Returned INFO_BL_REV
-    ///     @param boardID Returned INFO_BOARD_ID
-    ///     @param flashSize Returned INFO_FLASH_SIZE
-    bool getPX4BoardInfo(QextSerialPort* port, uint32_t& bootloaderVersion, uint32_t& boardID, uint32_t& flashSize);
-    
-    /// @brief Retrieve the board id from a 3DR Radio
-    bool get3DRRadioBoardId(QextSerialPort* port, uint32_t& boardID);
-    
-    /// @brief Sends a PROTO_REBOOT command to the bootloader
-    bool reboot(QextSerialPort* port);
-    
-    // Supported bootloader board ids
-    static const int boardIDPX4FMUV1 = 5;   ///< PX4 V1 board
-    static const int boardIDPX4FMUV2 = 9;   ///< PX4 V2 board
-    static const int boardIDPX4Flow = 6;    ///< PX4 Flow board
-    static const int boardIDAeroCore = 98;  ///< Gumstix AeroCore board
-    static const int boardID3DRRadio = 78;  ///< 3DR Radio
-    
+    bool open               (const QString portName);
+    void close              (void) { _port.close(); }
+    bool getBoardInfo       (uint32_t& bootloaderVersion, uint32_t& boardID, uint32_t& flashSize);
+    bool initFlashSequence  (void);
+    bool erase              (void);
+    bool program            (const FirmwareImage* image);
+    bool verify             (const FirmwareImage* image);
+    bool reboot             (void);
+
+    static const int boardIDPX4Flow         = 6;        ///< PX4 Flow board, as from USB PID
+    static const int boardIDSiKRadio1000    = 78;       ///< Original radio based on SI1000 chip
+    static const int boardIDSiKRadio1060    = 80;       ///< Newer radio based on SI1060 chip
+
+    /// Simulated board id for V3 which is a V2 board which supports larger flash space
+    /// IMPORTANT: Make sure this id does not conflict with any newly added real board ids
+    static const int boardIDPX4FMUV2 = 9;        ///< PX4 V2 board, as from USB PID
+    static const int boardIDPX4FMUV3 = 255;
+
 signals:
     /// @brief Signals progress indicator for long running bootloader utility routines
     void updateProgress(int curr, int total);
     
 private:
-    bool _binProgram(QextSerialPort* port, const FirmwareImage* image);
-    bool _ihxProgram(QextSerialPort* port, const FirmwareImage* image);
-    
-    bool _write(QextSerialPort* port, const uint8_t* data, qint64 maxSize);
-    bool _write(QextSerialPort* port, const uint8_t byte);
-    
-    bool _read(QextSerialPort* port, uint8_t* data, qint64 maxSize, int readTimeout = _readTimout);
-    
-    bool _sendCommand(QextSerialPort* port, uint8_t cmd, int responseTimeout = _responseTimeout);
-    bool _getCommandResponse(QextSerialPort* port, const int responseTimeout = _responseTimeout);
-    
-    bool _getPX4BoardInfo(QextSerialPort* port, uint8_t param, uint32_t& value);
-    
-    bool _verifyBytes(QextSerialPort* port, const FirmwareImage* image);
-    bool _binVerifyBytes(QextSerialPort* port, const FirmwareImage* image);
-    bool _ihxVerifyBytes(QextSerialPort* port, const FirmwareImage* image);
-    bool _verifyCRC(QextSerialPort* port);
+    bool    _sync               (void);
+    bool    _syncWorker         (void);
+    bool    _binProgram         (const FirmwareImage* image);
+    bool    _ihxProgram         (const FirmwareImage* image);
+    bool    _write              (const uint8_t* data, qint64 maxSize);
+    bool    _write              (const uint8_t byte);
+    bool    _write              (const char* data);
+    bool    _read               (uint8_t* data, qint64 cBytesExpected, int readTimeout = _readTimout);
+    bool    _sendCommand        (uint8_t cmd, int responseTimeout = _responseTimeout);
+    bool    _getCommandResponse (const int responseTimeout = _responseTimeout);
+    bool    _protoGetDevice     (uint8_t param, uint32_t& value);
+    bool    _verifyBytes        (const FirmwareImage* image);
+    bool    _binVerifyBytes     (const FirmwareImage* image);
+    bool    _ihxVerifyBytes     (const FirmwareImage* image);
+    bool    _verifyCRC          (void);
+    QString _getNextLine        (int timeoutMsecs);
+    bool    _get3DRRadioBoardId (uint32_t& boardID);
 
     enum {
         // protocol bytes
         PROTO_INSYNC =          0x12,   ///< 'in sync' byte sent before status
+        PROTO_BAD_SILICON_REV = 0x14,   ///< device is using silicon not suitable for the target the bootloader was used for
         PROTO_EOC =             0x20,   ///< end of command
         
         // Reply bytes
@@ -128,29 +92,30 @@ private:
         
         INFO_BL_REV         =   1,    ///< bootloader protocol revision
         BL_REV_MIN          =   2,    ///< Minimum supported bootlader protocol
-        BL_REV_MAX			=   4,    ///< Maximum supported bootloader protocol
+        BL_REV_MAX			=   5,    ///< Maximum supported bootloader protocol
         INFO_BOARD_ID		=   2,    ///< board type
         INFO_BOARD_REV		=   3,    ///< board revision
         INFO_FLASH_SIZE		=   4,    ///< max firmware size in bytes
         
-        PROG_MULTI_MAX		=   64,   ///< write size for PROTO_PROG_MULTI, must be multiple of 4
-        READ_MULTI_MAX		=   255   ///< read size for PROTO_READ_MULTI, must be multiple of 4
+        PROG_MULTI_MAX		=   64,     ///< write size for PROTO_PROG_MULTI, must be multiple of 4
+        READ_MULTI_MAX		=   0x28    ///< read size for PROTO_READ_MULTI, must be multiple of 4. Sik Radio max size is 0x28
     };
     
-    uint32_t    _boardID;           ///< board id for currently connected board
-    uint32_t    _boardFlashSize;    ///< flash size for currently connected board
-    uint32_t    _imageCRC;          ///< CRC for image in currently selected firmware file
-    uint32_t    _bootloaderVersion; ///< Bootloader version
+    QSerialPort _port;
+    bool        _sikRadio           = false;
+    bool        _inBootloaderMode   = false;    ///< true: board is in bootloader mode, false: special case for SiK Radio, board is in command mode
+    uint32_t    _boardID            = 0;        ///< board id for currently connected board
+    uint32_t    _boardFlashSize     = 0;        ///< flash size for currently connected board
+    uint32_t    _bootloaderVersion  = 0;        ///< Bootloader version
+    uint32_t    _imageCRC           = 0;        ///< CRC for image in currently selected firmware file
+    QString     _firmwareFilename;              ///< Currently selected firmware file to flash
+    QString     _errorString;                   ///< Last error
     
-    QString _firmwareFilename;      ///< Currently selected firmware file to flash
-    
-    QString _errorString;           ///< Last error
-    
-    static const int _eraseTimeout = 20000;     ///< Msecs to wait for response from erase command
-    static const int _rebootTimeout = 10000;    ///< Msecs to wait for reboot command to cause serial port to disconnect
-    static const int _verifyTimeout = 5000;     ///< Msecs to wait for response to PROTO_GET_CRC command
-    static const int _readTimout = 2000;        ///< Msecs to wait for read bytes to become avilable
-    static const int _responseTimeout = 2000;   ///< Msecs to wait for command response bytes
+    static const int _eraseTimeout                      = 20000;    ///< Msecs to wait for response from erase command
+    static const int _rebootTimeout                     = 10000;    ///< Msecs to wait for reboot command to cause serial port to disconnect
+    static const int _verifyTimeout                     = 5000;     ///< Msecs to wait for response to PROTO_GET_CRC command
+    static const int _readTimout                        = 2000;     ///< Msecs to wait for read bytes to become available
+    static const int _responseTimeout                   = 2000;     ///< Msecs to wait for command response bytes
+    static const int _flashSizeSmall                    = 1032192;  ///< Flash size for boards with silicon error
+    static const int _bootloaderVersionV2CorrectFlash   = 5;        ///< Anything below this bootloader version on V2 boards cannot trust flash size
 };
-
-#endif // PX4FirmwareUpgrade_H

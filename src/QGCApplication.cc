@@ -1,25 +1,12 @@
- /*=====================================================================
+/****************************************************************************
+ *
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
 
- QGroundControl Open Source Ground Control Station
-
- (c) 2009 - 2015 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
-
- This file is part of the QGROUNDCONTROL project
-
- QGROUNDCONTROL is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
-
- QGROUNDCONTROL is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License
- along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
-
- ======================================================================*/
 
 /**
  * @file
@@ -30,87 +17,146 @@
  */
 
 #include <QFile>
-#include <QFlags>
-#include <QSplashScreen>
-#include <QPixmap>
-#include <QDesktopWidget>
-#include <QPainter>
-#include <QStyleFactory>
-#include <QAction>
+#include <QRegularExpression>
+#include <QFontDatabase>
+#include <QQuickWindow>
+#include <QQuickImageProvider>
+#include <QQuickStyle>
+
+#ifdef QGC_ENABLE_BLUETOOTH
+#include <QBluetoothLocalDevice>
+#endif
 
 #include <QDebug>
 
-#include <VideoItem.h>
-#include <VideoSurface.h>
 #if defined(QGC_GST_STREAMING)
-G_BEGIN_DECLS
-GST_PLUGIN_STATIC_DECLARE(QTVIDEOSINK_NAME);
-G_END_DECLS
+#include "GStreamer.h"
 #endif
 
-#include "configuration.h"
 #include "QGC.h"
 #include "QGCApplication.h"
-#include "MainWindow.h"
-#include "GAudioOutput.h"
 #include "CmdLineOptParser.h"
-#include "QGCMessageBox.h"
-#include "MainWindow.h"
 #include "UDPLink.h"
-#ifndef __ios__
-#include "SerialLink.h"
-#endif
-#include "QGCSingleton.h"
 #include "LinkManager.h"
-#include "UASManager.h"
 #include "UASMessageHandler.h"
-#include "AutoPilotPluginManager.h"
 #include "QGCTemporaryFile.h"
-#include "QGCFileDialog.h"
 #include "QGCPalette.h"
+#include "QGCMapPalette.h"
 #include "QGCLoggingCategory.h"
-#include "ViewWidgetController.h"
 #include "ParameterEditorController.h"
-#include "CustomCommandWidgetController.h"
-#include "FlightModesComponentController.h"
-#include "AirframeComponentController.h"
-#include "SensorsComponentController.h"
-#include "PowerComponentController.h"
-#include "RadioComponentController.h"
+#include "ESP8266ComponentController.h"
 #include "ScreenToolsController.h"
+#include "QGCFileDialogController.h"
+#include "RCChannelMonitorController.h"
+#include "SyslinkComponentController.h"
+#include "AutoPilotPlugin.h"
+#include "VehicleComponent.h"
+#include "FirmwarePluginManager.h"
+#include "MultiVehicleManager.h"
+#include "Vehicle.h"
+#include "JoystickConfigController.h"
+#include "JoystickManager.h"
+#include "QmlObjectListModel.h"
+#include "QGCGeoBoundingCube.h"
+#include "MissionManager.h"
+#include "QGroundControlQmlGlobal.h"
+#include "FlightMapSettings.h"
+#include "FlightPathSegment.h"
+#include "PlanMasterController.h"
+#include "VideoManager.h"
+#include "VideoReceiver.h"
+#include "LogDownloadController.h"
+#if !defined(QGC_DISABLE_MAVLINK_INSPECTOR)
+#include "MAVLinkInspectorController.h"
+#endif
+#include "HorizontalFactValueGrid.h"
+#include "InstrumentValueData.h"
+#include "AppMessages.h"
+#include "SimulatedPosition.h"
+#include "PositionManager.h"
+#include "FollowMe.h"
+#include "MissionCommandTree.h"
+#include "QGCMapPolygon.h"
+#include "QGCMapCircle.h"
+#include "ParameterManager.h"
+#include "SettingsManager.h"
+#include "QGCCorePlugin.h"
+#include "QGCCameraManager.h"
+#include "CameraCalc.h"
+#include "VisualMissionItem.h"
+#include "EditPositionDialogController.h"
+#include "FactValueSliderListModel.h"
+#include "ShapeFileHelper.h"
+#include "QGCFileDownload.h"
+#include "FirmwareImage.h"
+#include "MavlinkConsoleController.h"
+#include "GeoTagController.h"
+#include "LogReplayLink.h"
+#include "VehicleObjectAvoidance.h"
+#include "TrajectoryPoints.h"
+#include "RCToParamDialogController.h"
+#include "QGCImageProvider.h"
+#include "TerrainProfile.h"
+#include "ToolStripAction.h"
+#include "ToolStripActionList.h"
+#include "QGCMAVLink.h"
+#include "VehicleLinkManager.h"
+#include "Autotune.h"
+
+#if defined(QGC_ENABLE_PAIRING)
+#include "PairingManager.h"
+#endif
+
 #ifndef __mobile__
 #include "FirmwareUpgradeController.h"
 #endif
-#include "AutoPilotPlugin.h"
-#include "VehicleComponent.h"
 
-#include "MavManager.h"
+#ifndef NO_SERIAL_LINK
+#include "SerialLink.h"
+#endif
+
+#ifndef __mobile__
+#include "GPS/GPSManager.h"
+#endif
 
 #ifdef QGC_RTLAB_ENABLED
 #include "OpalLink.h"
 #endif
 
+#ifdef Q_OS_LINUX
+#ifndef __mobile__
+#include <unistd.h>
+#include <sys/types.h>
+#endif
+#endif
 
-QGCApplication* QGCApplication::_app = NULL;
+#include "QGCMapEngine.h"
 
-const char* QGCApplication::_deleteAllSettingsKey = "DeleteAllSettingsNextBoot";
-const char* QGCApplication::_settingsVersionKey = "SettingsVersion";
-const char* QGCApplication::_savedFilesLocationKey = "SavedFilesLocation";
-const char* QGCApplication::_promptFlightDataSave = "PromptFLightDataSave";
-const char* QGCApplication::_styleKey = "StyleIsDark";
+class FinishVideoInitialization : public QRunnable
+{
+public:
+  FinishVideoInitialization(VideoManager* manager)
+      : _manager(manager)
+  {}
 
-const char* QGCApplication::_defaultSavedFileDirectoryName = "QGroundControl";
-const char* QGCApplication::_savedFileMavlinkLogDirectoryName = "FlightData";
-const char* QGCApplication::_savedFileParameterDirectoryName = "SavedParameters";
+  void run () {
+      _manager->_initVideo();
+  }
 
-const char* QGCApplication::_darkStyleFile = ":/res/styles/style-dark.css";
-const char* QGCApplication::_lightStyleFile = ":/res/styles/style-light.css";
+private:
+  VideoManager* _manager;
+};
 
-/**
- * @brief ScreenTools creation callback
- *
- * This is called by the QtQuick engine for creating the singleton
- **/
+
+QGCApplication* QGCApplication::_app = nullptr;
+
+const char* QGCApplication::_deleteAllSettingsKey           = "DeleteAllSettingsNextBoot";
+const char* QGCApplication::_settingsVersionKey             = "SettingsVersion";
+
+// Mavlink status structures for entire app
+mavlink_status_t m_mavlink_status[MAVLINK_COMM_NUM_BUFFERS];
+
+// Qml Singleton factories
 
 static QObject* screenToolsControllerSingletonFactory(QQmlEngine*, QJSEngine*)
 {
@@ -118,150 +164,126 @@ static QObject* screenToolsControllerSingletonFactory(QQmlEngine*, QJSEngine*)
     return screenToolsController;
 }
 
-/**
- * @brief MavManager creation callback
- *
- * This is called by the QtQuick engine for creating the singleton
-**/
-
-static QObject* mavManagerSingletonFactory(QQmlEngine*, QJSEngine*)
+static QObject* mavlinkSingletonFactory(QQmlEngine*, QJSEngine*)
 {
-    MavManager* mavManager = new MavManager;
-    qgcApp()->setMavManager(mavManager);
-    return mavManager;
+    return new QGCMAVLink();
 }
 
-#if defined(QGC_GST_STREAMING)
-#ifdef Q_OS_MAC
-#ifndef __ios__
-#ifdef QGC_INSTALL_RELEASE
-static void qgcputenv(const QString& key, const QString& root, const QString& path)
+static QObject* qgroundcontrolQmlGlobalSingletonFactory(QQmlEngine*, QJSEngine*)
 {
-    QString value = root + path;
-    qputenv(key.toStdString().c_str(), QByteArray(value.toStdString().c_str()));
-}
-#endif
-#endif
-#endif
-#endif
+    // We create this object as a QGCTool even though it isn't in the toolbox
+    QGroundControlQmlGlobal* qmlGlobal = new QGroundControlQmlGlobal(qgcApp(), qgcApp()->toolbox());
+    qmlGlobal->setToolbox(qgcApp()->toolbox());
 
-/**
- * @brief Constructor for the main application.
- *
- * This constructor initializes and starts the whole application. It takes standard
- * command-line parameters
- *
- * @param argc The number of command-line parameters
- * @param argv The string array of parameters
- **/
+    return qmlGlobal;
+}
+
+static QObject* shapeFileHelperSingletonFactory(QQmlEngine*, QJSEngine*)
+{
+    return new ShapeFileHelper;
+}
 
 QGCApplication::QGCApplication(int &argc, char* argv[], bool unitTesting)
-    : QApplication(argc, argv)
-    , _runningUnitTests(unitTesting)
-    , _styleIsDark(true)
-    , _pMavManager(NULL)
+    : QApplication          (argc, argv)
+    , _runningUnitTests     (unitTesting)
 {
-    Q_ASSERT(_app == NULL);
     _app = this;
+    _msecsElapsedTime.start();
 
-    // This prevents usage of QQuickWidget to fail since it doesn't support native widget siblings
-#ifndef __android__
-    setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
-#endif
-    
-    // Parse command line options
-    
-    bool fClearSettingsOptions = false; // Clear stored settings
-    bool fullLogging = false; // Turn on all logging
-    
-    CmdLineOpt_t rgCmdLineOptions[] = {
-        { "--clear-settings",   &fClearSettingsOptions, QString() },
-        { "--full-logging",     &fullLogging,           QString() },
-        // Add additional command line option flags here
-    };
-    
-    ParseCmdLineOptions(argc, argv, rgCmdLineOptions, sizeof(rgCmdLineOptions)/sizeof(rgCmdLineOptions[0]), false);
-
-#ifdef __mobile__
-    QLoggingCategory::setFilterRules(QStringLiteral("*Log.debug=false"));
-#else
-    if (fullLogging) {
-        QLoggingCategory::setFilterRules(QStringLiteral("*Log=true"));
-    } else {
-        if (_runningUnitTests) {
-            // We need to turn off these warnings until the firmware meta data is cleaned up
-            QLoggingCategory::setFilterRules(QStringLiteral("PX4ParameterLoaderLog.warning=false"));
+#ifdef Q_OS_LINUX
+#ifndef __mobile__
+    if (!_runningUnitTests) {
+        if (getuid() == 0) {
+            _exitWithError(QString(
+                tr("You are running %1 as root. "
+                    "You should not do this since it will cause other issues with %1."
+                    "%1 will now exit.<br/><br/>"
+                    "If you are having serial port issues on Ubuntu, execute the following commands to fix most issues:<br/>"
+                    "<pre>sudo usermod -a -G dialout $USER<br/>"
+                    "sudo apt-get remove modemmanager</pre>").arg(qgcApp()->applicationName())));
+            return;
         }
-        
-        // First thing we want to do is set up the qtlogging.ini file. If it doesn't already exist we copy
-        // it to the correct location. This way default debug builds will have logging turned off.
-
-        static const char* qtProjectDir = "QtProject";
-        static const char* qtLoggingFile = "qtlogging.ini";
-        bool loggingDirectoryOk = false;
-
-        QDir iniFileLocation(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation));
-        if (!iniFileLocation.cd(qtProjectDir)) {
-            if (!iniFileLocation.mkdir(qtProjectDir)) {
-                qDebug() << "Unable to create qtlogging.ini directory" << iniFileLocation.filePath(qtProjectDir);
-            } else {
-                if (!iniFileLocation.cd(qtProjectDir)) {
-                    qDebug() << "Unable to access qtlogging.ini directory" << iniFileLocation.filePath(qtProjectDir);;
-                }
-                loggingDirectoryOk = true;
-            }
-        } else {
-            loggingDirectoryOk = true;
-        }
-
-        if (loggingDirectoryOk) {
-            qDebug () << iniFileLocation;
-            if (!iniFileLocation.exists(qtLoggingFile)) {
-                QFile loggingFile(iniFileLocation.filePath(qtLoggingFile));
-                if (loggingFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                    QTextStream out(&loggingFile);
-                    out << "[Rules]\n";
-                    out << "*Log.debug=false\n";
-                    foreach(QString category, QGCLoggingCategoryRegister::instance()->registeredCategories()) {
-                        out << category << ".debug=false\n";
-                    }
-                } else {
-                    qDebug() << "Unable to create logging file" << QString(qtLoggingFile) << "in" << iniFileLocation;
+        // Determine if we have the correct permissions to access USB serial devices
+        QFile permFile("/etc/group");
+        if(permFile.open(QIODevice::ReadOnly)) {
+            while(!permFile.atEnd()) {
+                QString line = permFile.readLine();
+                if (line.contains("dialout") && !line.contains(getenv("USER"))) {
+                    permFile.close();
+                    _exitWithError(QString(
+                        tr("The current user does not have the correct permissions to access serial devices. "
+                           "You should also remove modemmanager since it also interferes.<br/><br/>"
+                           "If you are using Ubuntu, execute the following commands to fix these issues:<br/>"
+                           "<pre>sudo usermod -a -G dialout $USER<br/>"
+                           "sudo apt-get remove modemmanager</pre>")));
+                    return;
                 }
             }
+            permFile.close();
         }
+
+        // Always set style to default, this way QT_QUICK_CONTROLS_STYLE environment variable doesn't cause random changes in ui
+        QQuickStyle::setStyle("Default");
     }
 #endif
+#endif
+
+    // Setup for network proxy support
+    QNetworkProxyFactory::setUseSystemConfiguration(true);
+
+    // Parse command line options
+
+    bool fClearSettingsOptions = false; // Clear stored settings
+    bool fClearCache = false;           // Clear parameter/airframe caches
+    bool logging = false;               // Turn on logging
+    QString loggingOptions;
+
+    CmdLineOpt_t rgCmdLineOptions[] = {
+        { "--clear-settings",   &fClearSettingsOptions, nullptr },
+        { "--clear-cache",      &fClearCache,           nullptr },
+        { "--logging",          &logging,               &loggingOptions },
+        { "--fake-mobile",      &_fakeMobile,           nullptr },
+        { "--log-output",       &_logOutput,            nullptr },
+        // Add additional command line option flags here
+    };
+
+    ParseCmdLineOptions(argc, argv, rgCmdLineOptions, sizeof(rgCmdLineOptions)/sizeof(rgCmdLineOptions[0]), false);
 
     // Set up timer for delayed missing fact display
     _missingParamsDelayedDisplayTimer.setSingleShot(true);
     _missingParamsDelayedDisplayTimer.setInterval(_missingParamsDelayedDisplayTimerTimeout);
     connect(&_missingParamsDelayedDisplayTimer, &QTimer::timeout, this, &QGCApplication::_missingParamsDisplay);
-    
+
     // Set application information
+    QString applicationName;
     if (_runningUnitTests) {
         // We don't want unit tests to use the same QSettings space as the normal app. So we tweak the app
         // name. Also we want to run unit tests with clean settings every time.
-        setApplicationName(QString("%1_unittest").arg(QGC_APPLICATION_NAME));
+        applicationName = QStringLiteral("%1_unittest").arg(QGC_APPLICATION_NAME);
     } else {
-        setApplicationName(QGC_APPLICATION_NAME);
+// #ifdef DAILY_BUILD
+//         // This gives daily builds their own separate settings space. Allowing you to use daily and stable builds
+//         // side by side without daily screwing up your stable settings.
+//         applicationName = QStringLiteral("%1 Daily").arg(QGC_APPLICATION_NAME);
+// #else
+        applicationName = QGC_APPLICATION_NAME;
+// #endif
     }
+    setApplicationName(applicationName);
     setOrganizationName(QGC_ORG_NAME);
     setOrganizationDomain(QGC_ORG_DOMAIN);
 
-    // Version string is build from component parts. Format is:
-    //  vMajor.Minor.BuildNumber BuildType
-    QString versionString("v%1.%2.%3 %4");
-    versionString = versionString.arg(QGC_APPLICATION_VERSION_MAJOR).arg(QGC_APPLICATION_VERSION_MINOR).arg(QGC_APPLICATION_VERSION_BUILDNUMBER).arg(QGC_APPLICATION_VERSION_BUILDTYPE);
-    this->setApplicationVersion(versionString);
+    this->setApplicationVersion(QString(APP_VERSION_STR));
 
     // Set settings format
     QSettings::setDefaultFormat(QSettings::IniFormat);
-
     QSettings settings;
+    qDebug() << "Settings location" << settings.fileName() << "Is writable?:" << settings.isWritable();
+
 #ifdef UNITTEST_BUILD
-    qDebug() << "Settings location" << settings.fileName();
-    Q_ASSERT(settings.isWritable());
+    if (!settings.isWritable()) {
+        qWarning() << "Setings location is not writable";
+    }
 #endif
     // The setting will delete all settings on this boot
     fClearSettingsOptions |= settings.contains(_deleteAllSettingsKey);
@@ -274,188 +296,304 @@ QGCApplication::QGCApplication(int &argc, char* argv[], bool unitTesting)
     if (fClearSettingsOptions) {
         // User requested settings to be cleared on command line
         settings.clear();
-        settings.setValue(_settingsVersionKey, QGC_SETTINGS_VERSION);
+
+        // Clear parameter cache
+        QDir paramDir(ParameterManager::parameterCacheDir());
+        paramDir.removeRecursively();
+        paramDir.mkpath(paramDir.absolutePath());
+    } else {
+        // Determine if upgrade message for settings version bump is required. Check and clear must happen before toolbox is started since
+        // that will write some settings.
+        if (settings.contains(_settingsVersionKey)) {
+            if (settings.value(_settingsVersionKey).toInt() != QGC_SETTINGS_VERSION) {
+                settings.clear();
+                _settingsUpgraded = true;
+            }
+        }
+    }
+    settings.setValue(_settingsVersionKey, QGC_SETTINGS_VERSION);
+
+    if (fClearCache) {
+        QDir dir(ParameterManager::parameterCacheDir());
+        dir.removeRecursively();
+        QFile airframe(cachedAirframeMetaDataFile());
+        airframe.remove();
+        QFile parameter(cachedParameterMetaDataFile());
+        parameter.remove();
     }
 
-    //----------------------------------------------------------------
-    //-- Video Streaming
-#if defined(QGC_GST_STREAMING)
-#ifdef Q_OS_MAC
-#ifndef __ios__
-#ifdef QGC_INSTALL_RELEASE
-    QString currentDir = QCoreApplication::applicationDirPath();
-    qgcputenv("GST_PLUGIN_SCANNER",           currentDir, "/gst-plugin-scanner");
-    qgcputenv("GTK_PATH",                     currentDir, "/../Frameworks/GStreamer.framework/Versions/Current");
-    qgcputenv("GIO_EXTRA_MODULES",            currentDir, "/../Frameworks/GStreamer.framework/Versions/Current/lib/gio/modules");
-    qgcputenv("GST_PLUGIN_SYSTEM_PATH_1_0",   currentDir, "/../Frameworks/GStreamer.framework/Versions/Current/lib/gstreamer-1.0");
-    qgcputenv("GST_PLUGIN_SYSTEM_PATH",       currentDir, "/../Frameworks/GStreamer.framework/Versions/Current/lib/gstreamer-1.0");
-    qgcputenv("GST_PLUGIN_PATH_1_0",          currentDir, "/../Frameworks/GStreamer.framework/Versions/Current/lib/gstreamer-1.0");
-    qgcputenv("GST_PLUGIN_PATH",              currentDir, "/../Frameworks/GStreamer.framework/Versions/Current/lib/gstreamer-1.0");
-//    QStringList env = QProcessEnvironment::systemEnvironment().keys();
-//    foreach(QString key, env) {
-//        qDebug() << key << QProcessEnvironment::systemEnvironment().value(key);
-//    }
-#endif
-#endif
-#endif
-#endif
+    // Set up our logging filters
+    QGCLoggingCategoryRegister::instance()->setFilterRulesFromSettings(loggingOptions);
 
-    qmlRegisterType<VideoItem>("QGroundControl.QgcQtGStreamer", 1, 0, "VideoItem");
-    qmlRegisterUncreatableType<VideoSurface>("QGroundControl.QgcQtGStreamer", 1, 0, "VideoSurface", QLatin1String("VideoSurface from QML is not supported"));
-
-#if defined(QGC_GST_STREAMING)
-    GError* error = NULL;
-    if (!gst_init_check(&argc, &argv, &error)) {
-        qCritical() << "gst_init_check() failed: " << error->message;
-        g_error_free(error);
+    // Initialize Bluetooth
+#ifdef QGC_ENABLE_BLUETOOTH
+    QBluetoothLocalDevice localDevice;
+    if (localDevice.isValid())
+    {
+        _bluetoothAvailable = true;
     }
-    GST_PLUGIN_STATIC_REGISTER(QTVIDEOSINK_NAME);
 #endif
 
+    // Gstreamer debug settings
+    int gstDebugLevel = 0;
+    if (settings.contains(AppSettings::gstDebugLevelName)) {
+        gstDebugLevel = settings.value(AppSettings::gstDebugLevelName).toInt();
+    }
+
+#if defined(QGC_GST_STREAMING)
+    // Initialize Video Receiver
+    GStreamer::initialize(argc, argv, gstDebugLevel);
+#else
+    Q_UNUSED(gstDebugLevel)
+#endif
+
+    // We need to set language as early as possible prior to loading on JSON files.
+    setLanguage();
+
+    _toolbox = new QGCToolbox(this);
+    _toolbox->setChildToolboxes();
+
+#ifndef __mobile__
+    _gpsRtkFactGroup = new GPSRTKFactGroup(this);
+   GPSManager *gpsManager = _toolbox->gpsManager();
+   if (gpsManager) {
+       connect(gpsManager, &GPSManager::onConnect,          this, &QGCApplication::_onGPSConnect);
+       connect(gpsManager, &GPSManager::onDisconnect,       this, &QGCApplication::_onGPSDisconnect);
+       connect(gpsManager, &GPSManager::surveyInStatus,     this, &QGCApplication::_gpsSurveyInStatus);
+       connect(gpsManager, &GPSManager::satelliteUpdate,    this, &QGCApplication::_gpsNumSatellites);
+   }
+#endif /* __mobile__ */
+
+    _checkForNewVersion();
+}
+
+void QGCApplication::_exitWithError(QString errorMessage)
+{
+    _error = true;
+    QQmlApplicationEngine* pEngine = new QQmlApplicationEngine(this);
+    pEngine->addImportPath("qrc:/qml");
+    pEngine->rootContext()->setContextProperty("errorMessage", errorMessage);
+    pEngine->load(QUrl(QStringLiteral("qrc:/qml/ExitWithErrorWindow.qml")));
+    // Exit main application when last window is closed
+    connect(this, &QGCApplication::lastWindowClosed, this, QGCApplication::quit);
+}
+
+void QGCApplication::setLanguage()
+{
+    _locale = QLocale::system();
+    qDebug() << "System reported locale:" << _locale << "; Name" << _locale.name() << "; Preffered (used in maps): " << (QLocale::system().uiLanguages().length() > 0 ? QLocale::system().uiLanguages()[0] : "None");
+
+    QLocale::Language possibleLocale = AppSettings::_qLocaleLanguageID();
+    if (possibleLocale != QLocale::AnyLanguage) {
+        _locale = QLocale(possibleLocale);
+    }
+    //-- We have specific fonts for Korean
+    if(_locale == QLocale::Korean) {
+        qCDebug(LocalizationLog) << "Loading Korean fonts" << _locale.name();
+        if(QFontDatabase::addApplicationFont(":/fonts/NanumGothic-Regular") < 0) {
+            qCWarning(LocalizationLog) << "Could not load /fonts/NanumGothic-Regular font";
+        }
+        if(QFontDatabase::addApplicationFont(":/fonts/NanumGothic-Bold") < 0) {
+            qCWarning(LocalizationLog) << "Could not load /fonts/NanumGothic-Bold font";
+        }
+    }
+    qCDebug(LocalizationLog) << "Loading localizations for" << _locale.name();
+    _app->removeTranslator(&_qgcTranslatorJSON);
+    _app->removeTranslator(&_qgcTranslatorSourceCode);
+    _app->removeTranslator(&_qgcTranslatorQtLibs);
+    if (_locale.name() != "en_US") {
+        QLocale::setDefault(_locale);
+        if(_qgcTranslatorQtLibs.load("qt_" + _locale.name(), QLibraryInfo::location(QLibraryInfo::TranslationsPath))) {
+            _app->installTranslator(&_qgcTranslatorQtLibs);
+        } else {
+            qCWarning(LocalizationLog) << "Qt lib localization for" << _locale.name() << "is not present";
+        }
+        if(_qgcTranslatorSourceCode.load(_locale, QLatin1String("qgc_source_"), "", ":/i18n")) {
+            _app->installTranslator(&_qgcTranslatorSourceCode);
+        } else {
+            qCWarning(LocalizationLog) << "Error loading source localization for" << _locale.name();
+        }
+        if(_qgcTranslatorJSON.load(_locale, QLatin1String("qgc_json_"), "", ":/i18n")) {
+            _app->installTranslator(&_qgcTranslatorJSON);
+        } else {
+            qCWarning(LocalizationLog) << "Error loading json localization for" << _locale.name();
+        }
+    }
+    if(_qmlAppEngine)
+        _qmlAppEngine->retranslate();
+    emit languageChanged(_locale);
+}
+
+void QGCApplication::_shutdown()
+{
+    // Close out all Qml before we delete toolbox. This way we don't get all sorts of null reference complaints from Qml.
+    delete _qmlAppEngine;
+    delete _toolbox;
+    delete _gpsRtkFactGroup;
 }
 
 QGCApplication::~QGCApplication()
 {
-    _destroySingletons();
-#if defined(QGC_GST_STREAMING)
-    gst_deinit();
-#endif
+    // Place shutdown code in _shutdown
+    _app = nullptr;
 }
 
-void QGCApplication::_initCommon(void)
+void QGCApplication::_initCommon()
 {
+    static const char* kRefOnly         = "Reference only";
+    static const char* kQGroundControl  = "QGroundControl";
+    static const char* kQGCControllers  = "QGroundControl.Controllers";
+    static const char* kQGCVehicle      = "QGroundControl.Vehicle";
+    static const char* kQGCTemplates    = "QGroundControl.Templates";
+
     QSettings settings;
 
     // Register our Qml objects
-    
-    qmlRegisterType<QGCPalette>("QGroundControl.Palette", 1, 0, "QGCPalette");
-    
-    qmlRegisterUncreatableType<AutoPilotPlugin>("QGroundControl.AutoPilotPlugin", 1, 0, "AutoPilotPlugin", "Can only reference, cannot create");
-    qmlRegisterUncreatableType<VehicleComponent>("QGroundControl.AutoPilotPlugin", 1, 0, "VehicleComponent", "Can only reference, cannot create");
-    
-    qmlRegisterType<ViewWidgetController>("QGroundControl.Controllers", 1, 0, "ViewWidgetController");
-    qmlRegisterType<ParameterEditorController>("QGroundControl.Controllers", 1, 0, "ParameterEditorController");
-    qmlRegisterType<CustomCommandWidgetController>("QGroundControl.Controllers", 1, 0, "CustomCommandWidgetController");
-    qmlRegisterType<FlightModesComponentController>("QGroundControl.Controllers", 1, 0, "FlightModesComponentController");
-    qmlRegisterType<AirframeComponentController>("QGroundControl.Controllers", 1, 0, "AirframeComponentController");
-    qmlRegisterType<SensorsComponentController>("QGroundControl.Controllers", 1, 0, "SensorsComponentController");
-    qmlRegisterType<PowerComponentController>("QGroundControl.Controllers", 1, 0, "PowerComponentController");
-    qmlRegisterType<RadioComponentController>("QGroundControl.Controllers", 1, 0, "RadioComponentController");
-    qmlRegisterType<ScreenToolsController>("QGroundControl.Controllers", 1, 0, "ScreenToolsController");
-    
-#ifndef __mobile__
-    qmlRegisterType<FirmwareUpgradeController>("QGroundControl.Controllers", 1, 0, "FirmwareUpgradeController");
+
+    qmlRegisterType<QGCPalette>     ("QGroundControl.Palette", 1, 0, "QGCPalette");
+    qmlRegisterType<QGCMapPalette>  ("QGroundControl.Palette", 1, 0, "QGCMapPalette");
+
+    qmlRegisterUncreatableType<Vehicle>                 (kQGCVehicle,                       1, 0, "Vehicle",                    kRefOnly);
+    qmlRegisterUncreatableType<MissionManager>          (kQGCVehicle,                       1, 0, "MissionManager",             kRefOnly);
+    qmlRegisterUncreatableType<ParameterManager>        (kQGCVehicle,                       1, 0, "ParameterManager",           kRefOnly);
+    qmlRegisterUncreatableType<VehicleObjectAvoidance>  (kQGCVehicle,                       1, 0, "VehicleObjectAvoidance",     kRefOnly);
+    qmlRegisterUncreatableType<QGCCameraManager>        (kQGCVehicle,                       1, 0, "QGCCameraManager",           kRefOnly);
+    qmlRegisterUncreatableType<QGCCameraControl>        (kQGCVehicle,                       1, 0, "QGCCameraControl",           kRefOnly);
+    qmlRegisterUncreatableType<QGCVideoStreamInfo>      (kQGCVehicle,                       1, 0, "QGCVideoStreamInfo",         kRefOnly);
+    qmlRegisterUncreatableType<LinkInterface>           (kQGCVehicle,                       1, 0, "LinkInterface",              kRefOnly);
+    qmlRegisterUncreatableType<VehicleLinkManager>      (kQGCVehicle,                       1, 0, "VehicleLinkManager",         kRefOnly);
+    qmlRegisterUncreatableType<Autotune>                (kQGCVehicle,                       1, 0, "Autotune",                   kRefOnly);
+
+    qmlRegisterUncreatableType<MissionController>       (kQGCControllers,                   1, 0, "MissionController",          kRefOnly);
+    qmlRegisterUncreatableType<GeoFenceController>      (kQGCControllers,                   1, 0, "GeoFenceController",         kRefOnly);
+    qmlRegisterUncreatableType<RallyPointController>    (kQGCControllers,                   1, 0, "RallyPointController",       kRefOnly);
+
+    qmlRegisterUncreatableType<MissionItem>         (kQGroundControl,                       1, 0, "MissionItem",                kRefOnly);
+    qmlRegisterUncreatableType<VisualMissionItem>   (kQGroundControl,                       1, 0, "VisualMissionItem",          kRefOnly);
+    qmlRegisterUncreatableType<FlightPathSegment>   (kQGroundControl,                       1, 0, "FlightPathSegment",          kRefOnly);
+    qmlRegisterUncreatableType<QmlObjectListModel>  (kQGroundControl,                       1, 0, "QmlObjectListModel",         kRefOnly);
+    qmlRegisterUncreatableType<MissionCommandTree>  (kQGroundControl,                       1, 0, "MissionCommandTree",         kRefOnly);
+    qmlRegisterUncreatableType<CameraCalc>          (kQGroundControl,                       1, 0, "CameraCalc",                 kRefOnly);
+    qmlRegisterUncreatableType<LogReplayLink>       (kQGroundControl,                       1, 0, "LogReplayLink",              kRefOnly);
+    qmlRegisterUncreatableType<InstrumentValueData> (kQGroundControl,                       1, 0, "InstrumentValueData",        kRefOnly);
+    qmlRegisterType<LogReplayLinkController>        (kQGroundControl,                       1, 0, "LogReplayLinkController");
+#if !defined(QGC_DISABLE_MAVLINK_INSPECTOR)
+    qmlRegisterUncreatableType<MAVLinkChartController> (kQGroundControl,                    1, 0, "MAVLinkChart",               kRefOnly);
 #endif
-    
-    //-- Create QML Singleton Interfaces
-    qmlRegisterSingletonType<ScreenToolsController>("QGroundControl.ScreenToolsController", 1, 0, "ScreenToolsController", screenToolsControllerSingletonFactory);
-    qmlRegisterSingletonType<MavManager>("QGroundControl.MavManager", 1, 0, "MavManager", mavManagerSingletonFactory);
-    
-    //-- Register Waypoint Interface
-    qmlRegisterInterface<Waypoint>("Waypoint");
-    // Show user an upgrade message if the settings version has been bumped up
-    bool settingsUpgraded = false;
-    if (settings.contains(_settingsVersionKey)) {
-        if (settings.value(_settingsVersionKey).toInt() != QGC_SETTINGS_VERSION) {
-            settingsUpgraded = true;
-        }
-    } else if (settings.allKeys().count()) {
-        // Settings version key is missing and there are settings. This is an upgrade scenario.
-        settingsUpgraded = true;
+#if defined(QGC_ENABLE_PAIRING)
+    qmlRegisterUncreatableType<PairingManager>      (kQGroundControl,                       1, 0, "PairingManager",             kRefOnly);
+#endif
+
+    qmlRegisterUncreatableType<AutoPilotPlugin>     ("QGroundControl.AutoPilotPlugin",      1, 0, "AutoPilotPlugin",            kRefOnly);
+    qmlRegisterUncreatableType<VehicleComponent>    ("QGroundControl.AutoPilotPlugin",      1, 0, "VehicleComponent",           kRefOnly);
+    qmlRegisterUncreatableType<JoystickManager>     ("QGroundControl.JoystickManager",      1, 0, "JoystickManager",            kRefOnly);
+    qmlRegisterUncreatableType<Joystick>            ("QGroundControl.JoystickManager",      1, 0, "Joystick",                   kRefOnly);
+    qmlRegisterUncreatableType<QGCPositionManager>  ("QGroundControl.QGCPositionManager",   1, 0, "QGCPositionManager",         kRefOnly);
+    qmlRegisterUncreatableType<FactValueSliderListModel>("QGroundControl.FactControls",     1, 0, "FactValueSliderListModel",   kRefOnly);
+
+    qmlRegisterUncreatableType<QGCMapPolygon>       ("QGroundControl.FlightMap",            1, 0, "QGCMapPolygon",              kRefOnly);
+    qmlRegisterUncreatableType<QGCGeoBoundingCube>  ("QGroundControl.FlightMap",            1, 0, "QGCGeoBoundingCube",         kRefOnly);
+    qmlRegisterUncreatableType<TrajectoryPoints>    ("QGroundControl.FlightMap",            1, 0, "TrajectoryPoints",           kRefOnly);
+
+    qmlRegisterUncreatableType<FactValueGrid>       (kQGCTemplates,                         1, 0, "FactValueGrid",              kRefOnly);
+    qmlRegisterType<HorizontalFactValueGrid>        (kQGCTemplates,                         1, 0, "HorizontalFactValueGrid");
+
+    qmlRegisterType<QGCMapCircle>                   ("QGroundControl.FlightMap",            1, 0, "QGCMapCircle");
+
+    qmlRegisterType<ParameterEditorController>      (kQGCControllers,                       1, 0, "ParameterEditorController");
+    qmlRegisterType<ESP8266ComponentController>     (kQGCControllers,                       1, 0, "ESP8266ComponentController");
+    qmlRegisterType<ScreenToolsController>          (kQGCControllers,                       1, 0, "ScreenToolsController");
+    qmlRegisterType<PlanMasterController>           (kQGCControllers,                       1, 0, "PlanMasterController");
+    qmlRegisterType<QGCFileDialogController>        (kQGCControllers,                       1, 0, "QGCFileDialogController");
+    qmlRegisterType<RCChannelMonitorController>     (kQGCControllers,                       1, 0, "RCChannelMonitorController");
+    qmlRegisterType<JoystickConfigController>       (kQGCControllers,                       1, 0, "JoystickConfigController");
+    qmlRegisterType<LogDownloadController>          (kQGCControllers,                       1, 0, "LogDownloadController");
+    qmlRegisterType<SyslinkComponentController>     (kQGCControllers,                       1, 0, "SyslinkComponentController");
+    qmlRegisterType<EditPositionDialogController>   (kQGCControllers,                       1, 0, "EditPositionDialogController");
+    qmlRegisterType<RCToParamDialogController>      (kQGCControllers,                       1, 0, "RCToParamDialogController");
+
+    qmlRegisterType<TerrainProfile>                 ("QGroundControl.Controls",             1, 0, "TerrainProfile");
+    qmlRegisterType<ToolStripAction>                ("QGroundControl.Controls",             1, 0, "ToolStripAction");
+    qmlRegisterType<ToolStripActionList>            ("QGroundControl.Controls",             1, 0, "ToolStripActionList");
+
+#ifndef __mobile__
+#ifndef NO_SERIAL_LINK
+    qmlRegisterType<FirmwareUpgradeController>      (kQGCControllers,                       1, 0, "FirmwareUpgradeController");
+#endif
+#endif
+    qmlRegisterType<GeoTagController>               (kQGCControllers,                       1, 0, "GeoTagController");
+    qmlRegisterType<MavlinkConsoleController>       (kQGCControllers,                       1, 0, "MavlinkConsoleController");
+#if !defined(QGC_DISABLE_MAVLINK_INSPECTOR)
+    qmlRegisterType<MAVLinkInspectorController>     (kQGCControllers,                       1, 0, "MAVLinkInspectorController");
+#endif
+
+    // Register Qml Singletons
+    qmlRegisterSingletonType<QGroundControlQmlGlobal>   ("QGroundControl",                          1, 0, "QGroundControl",         qgroundcontrolQmlGlobalSingletonFactory);
+    qmlRegisterSingletonType<ScreenToolsController>     ("QGroundControl.ScreenToolsController",    1, 0, "ScreenToolsController",  screenToolsControllerSingletonFactory);
+    qmlRegisterSingletonType<ShapeFileHelper>           ("QGroundControl.ShapeFileHelper",          1, 0, "ShapeFileHelper",        shapeFileHelperSingletonFactory);
+    qmlRegisterSingletonType<ShapeFileHelper>           ("MAVLink",                                 1, 0, "MAVLink",                mavlinkSingletonFactory);
+
+    // Although this should really be in _initForNormalAppBoot putting it here allowws us to create unit tests which pop up more easily
+    if(QFontDatabase::addApplicationFont(":/fonts/opensans") < 0) {
+        qWarning() << "Could not load /fonts/opensans font";
     }
-
-    if (settingsUpgraded) {
-        settings.clear();
-        settings.setValue(_settingsVersionKey, QGC_SETTINGS_VERSION);
-        QGCMessageBox::information(tr("Settings Cleared"),
-                                   tr("The format for QGroundControl saved settings has been modified. "
-                                      "Your saved settings have been reset to defaults."));
+    if(QFontDatabase::addApplicationFont(":/fonts/opensans-demibold") < 0) {
+        qWarning() << "Could not load /fonts/opensans-demibold font";
     }
-
-    _styleIsDark = settings.value(_styleKey, _styleIsDark).toBool();
-    _loadCurrentStyle();
-
-    // Load saved files location and validate
-
-    QString savedFilesLocation;
-    if (settings.contains(_savedFilesLocationKey)) {
-        savedFilesLocation = settings.value(_savedFilesLocationKey).toString();
-        if (!validatePossibleSavedFilesLocation(savedFilesLocation)) {
-            savedFilesLocation.clear();
-        }
-    }
-    
-    if (savedFilesLocation.isEmpty()) {
-        // No location set (or invalid). Create a default one in Documents standard location.
-
-        QString documentsLocation = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-
-        QDir documentsDir(documentsLocation);
-        Q_ASSERT(documentsDir.exists());
-
-        bool pathCreated = documentsDir.mkpath(_defaultSavedFileDirectoryName);
-        Q_UNUSED(pathCreated);
-        Q_ASSERT(pathCreated);
-        savedFilesLocation = documentsDir.filePath(_defaultSavedFileDirectoryName);
-    }
-
-    if (!savedFilesLocation.isEmpty()) {
-        if (!validatePossibleSavedFilesLocation(savedFilesLocation)) {
-            savedFilesLocation.clear();
-        }
-    }
-    qDebug() << "Saved files location" << savedFilesLocation;
-    settings.setValue(_savedFilesLocationKey, savedFilesLocation);
 }
 
-bool QGCApplication::_initForNormalAppBoot(void)
+bool QGCApplication::_initForNormalAppBoot()
 {
     QSettings settings;
 
-    _createSingletons();
+    _qmlAppEngine = toolbox()->corePlugin()->createQmlApplicationEngine(this);
+    toolbox()->corePlugin()->createRootWindow(_qmlAppEngine);
 
-    // Show splash screen
-    QPixmap splashImage(":/res/SplashScreen");
-    QSplashScreen* splashScreen = new QSplashScreen(splashImage);
-    // Delete splash screen after mainWindow was displayed
-    splashScreen->setAttribute(Qt::WA_DeleteOnClose);
-    splashScreen->show();
-    processEvents();
-    splashScreen->showMessage(tr("Loading application fonts"), Qt::AlignLeft | Qt::AlignBottom, QColor(62, 93, 141));
-    // Exit main application when last window is closed
-    connect(this, SIGNAL(lastWindowClosed()), this, SLOT(quit()));
+    // Image provider for PX4 Flow
+    QQuickImageProvider* pImgProvider = dynamic_cast<QQuickImageProvider*>(qgcApp()->toolbox()->imageProvider());
+    _qmlAppEngine->addImageProvider(QStringLiteral("QGCImages"), pImgProvider);
 
-    // Start the user interface
-    splashScreen->showMessage(tr("Starting user interface"), Qt::AlignLeft | Qt::AlignBottom, QColor(62, 93, 141));
-    MainWindow* mainWindow = MainWindow::_create(splashScreen);
-    Q_CHECK_PTR(mainWindow);
+    QQuickWindow* rootWindow = qgcApp()->mainRootWindow();
 
-    // If we made it this far and we still don't have a location. Either the specfied location was invalid
-    // or we coudn't create a default location. Either way, we need to let the user know and prompt for a new
-    /// settings.
-    QString savedFilesLocation = settings.value(_savedFilesLocationKey).toString();
-    if (savedFilesLocation.isEmpty()) {
-        QGCMessageBox::warning(
-            tr("Bad save location"),
-            tr("The location to save files to is invalid, or cannot be written to. Please provide a new one."));
-        mainWindow->showSettings();
+    if (rootWindow) {
+        rootWindow->scheduleRenderJob (new FinishVideoInitialization (toolbox()->videoManager()),
+                QQuickWindow::BeforeSynchronizingStage);
     }
 
-    // Remove splash screen
-    splashScreen->finish(mainWindow);
-    mainWindow->splashScreenFinished();
+    // Safe to show popup error messages now that main window is created
+    UASMessageHandler* msgHandler = qgcApp()->toolbox()->uasMessageHandler();
+    if (msgHandler) {
+        msgHandler->showErrorsInToolbar();
+    }
 
     // Now that main window is up check for lost log files
-    connect(this, &QGCApplication::checkForLostLogFiles, MAVLinkProtocol::instance(), &MAVLinkProtocol::checkForLostLogFiles);
+    connect(this, &QGCApplication::checkForLostLogFiles, toolbox()->mavlinkProtocol(), &MAVLinkProtocol::checkForLostLogFiles);
     emit checkForLostLogFiles();
 
     // Load known link configurations
-    LinkManager::instance()->loadLinkConfigurationList();
+    toolbox()->linkManager()->loadLinkConfigurationList();
 
+    // Probe for joysticks
+    toolbox()->joystickManager()->init();
+
+    if (_settingsUpgraded) {
+        showAppMessage(QString(tr("The format for %1 saved settings has been modified. "
+                    "Your saved settings have been reset to defaults.")).arg(applicationName()));
+    }
+
+    // Connect links with flag AutoconnectLink
+    toolbox()->linkManager()->startAutoConnectedLinks();
+
+    if (getQGCMapEngine()->wasCacheReset()) {
+        showAppMessage(tr("The Offline Map Cache database has been upgraded. "
+                    "Your old map cache sets have been reset."));
+    }
+
+    settings.sync();
     return true;
 }
 
-bool QGCApplication::_initForUnitTests(void)
+bool QGCApplication::_initForUnitTests()
 {
     return true;
 }
@@ -472,303 +610,429 @@ void QGCApplication::clearDeleteAllSettingsNextBoot(void)
     settings.remove(_deleteAllSettingsKey);
 }
 
-void QGCApplication::setSavedFilesLocation(QString& location)
+/// @brief Returns the QGCApplication object singleton.
+QGCApplication* qgcApp(void)
 {
-    QSettings settings;
-    settings.setValue(_savedFilesLocationKey, location);
+    return QGCApplication::_app;
 }
 
-bool QGCApplication::validatePossibleSavedFilesLocation(QString& location)
+void QGCApplication::informationMessageBoxOnMainThread(const QString& /*title*/, const QString& msg)
 {
-    // Make sure we can write to the directory
+    showAppMessage(msg);
+}
 
-    QString filename = QDir(location).filePath("QGCTempXXXXXXXX.tmp");
-    QGCTemporaryFile tempFile(filename);
-    if (!tempFile.open()) {
+void QGCApplication::warningMessageBoxOnMainThread(const QString& /*title*/, const QString& msg)
+{
+    showAppMessage(msg);
+}
+
+void QGCApplication::criticalMessageBoxOnMainThread(const QString& /*title*/, const QString& msg)
+{
+    showAppMessage(msg);
+}
+
+void QGCApplication::saveTelemetryLogOnMainThread(QString tempLogfile)
+{
+    // The vehicle is gone now and we are shutting down so we need to use a message box for errors to hold shutdown and show the error
+    if (_checkTelemetrySavePath(true /* useMessageBox */)) {
+
+        QString saveDirPath = _toolbox->settingsManager()->appSettings()->telemetrySavePath();
+        QDir saveDir(saveDirPath);
+
+        QString nameFormat("%1%2.%3");
+        QString dtFormat("yyyy-MM-dd hh-mm-ss");
+
+        int tryIndex = 1;
+        QString saveFileName = nameFormat.arg(
+            QDateTime::currentDateTime().toString(dtFormat)).arg(QStringLiteral("")).arg(toolbox()->settingsManager()->appSettings()->telemetryFileExtension);
+        while (saveDir.exists(saveFileName)) {
+            saveFileName = nameFormat.arg(
+                QDateTime::currentDateTime().toString(dtFormat)).arg(QStringLiteral(".%1").arg(tryIndex++)).arg(toolbox()->settingsManager()->appSettings()->telemetryFileExtension);
+        }
+        QString saveFilePath = saveDir.absoluteFilePath(saveFileName);
+
+        QFile tempFile(tempLogfile);
+        if (!tempFile.copy(saveFilePath)) {
+            QString error = tr("Unable to save telemetry log. Error copying telemetry to '%1': '%2'.").arg(saveFilePath).arg(tempFile.errorString());
+            showAppMessage(error);
+        }
+    }
+    QFile::remove(tempLogfile);
+}
+
+void QGCApplication::checkTelemetrySavePathOnMainThread()
+{
+    // This is called with an active vehicle so don't pop message boxes which holds ui thread
+    _checkTelemetrySavePath(false /* useMessageBox */);
+}
+
+bool QGCApplication::_checkTelemetrySavePath(bool /*useMessageBox*/)
+{
+    QString saveDirPath = _toolbox->settingsManager()->appSettings()->telemetrySavePath();
+    if (saveDirPath.isEmpty()) {
+        QString error = tr("Unable to save telemetry log. Application save directory is not set.");
+        showAppMessage(error);
         return false;
     }
 
-    tempFile.remove();
+    QDir saveDir(saveDirPath);
+    if (!saveDir.exists()) {
+        QString error = tr("Unable to save telemetry log. Telemetry save directory \"%1\" does not exist.").arg(saveDirPath);
+        showAppMessage(error);
+        return false;
+    }
 
     return true;
 }
 
-QString QGCApplication::savedFilesLocation(void)
-{
-    QSettings settings;
-
-    return settings.value(_savedFilesLocationKey).toString();
-}
-
-QString QGCApplication::savedParameterFilesLocation(void)
-{
-    QString location;
-    QDir    parentDir(savedFilesLocation());
-
-    location = parentDir.filePath(_savedFileParameterDirectoryName);
-
-    if (!QDir(location).exists()) {
-        // If directory doesn't exist, try to create it
-        if (!parentDir.mkpath(_savedFileParameterDirectoryName)) {
-            // Return an error
-            location.clear();
-        }
-    }
-
-    return location;
-}
-
-QString QGCApplication::mavlinkLogFilesLocation(void)
-{
-    QString location;
-    QDir    parentDir(savedFilesLocation());
-
-    location = parentDir.filePath(_savedFileMavlinkLogDirectoryName);
-
-    if (!QDir(location).exists()) {
-        // If directory doesn't exist, try to create it
-        if (!parentDir.mkpath(_savedFileMavlinkLogDirectoryName)) {
-            // Return an error
-            location.clear();
-        }
-    }
-
-    return location;
-}
-
-bool QGCApplication::promptFlightDataSave(void)
-{
-    QSettings settings;
-
-    return settings.value(_promptFlightDataSave, true).toBool();
-}
-
-void QGCApplication::setPromptFlightDataSave(bool promptForSave)
-{
-    QSettings settings;
-    settings.setValue(_promptFlightDataSave, promptForSave);
-}
-
-/// @brief Returns the QGCApplication object singleton.
-QGCApplication* qgcApp(void)
-{
-    Q_ASSERT(QGCApplication::_app);
-    return QGCApplication::_app;
-}
-
-/// @brief We create all the non-ui based singletons here instead of allowing them to be created randomly
-///         by calls to instance. The reason being that depending on boot sequence the singleton may end
-///         up being creating on something other than the main thread.
-void QGCApplication::_createSingletons(void)
-{
-    // The order here is important since the singletons reference each other
-
-    GAudioOutput* audio = GAudioOutput::_createSingleton();
-    Q_UNUSED(audio);
-    Q_ASSERT(audio);
-
-    LinkManager* linkManager = LinkManager::_createSingleton();
-    Q_UNUSED(linkManager);
-    Q_ASSERT(linkManager);
-
-    // Needs LinkManager
-    UASManagerInterface* uasManager = UASManager::_createSingleton();
-    Q_UNUSED(uasManager);
-    Q_ASSERT(uasManager);
-
-    // Need UASManager
-    AutoPilotPluginManager* pluginManager = AutoPilotPluginManager::_createSingleton();
-    Q_UNUSED(pluginManager);
-    Q_ASSERT(pluginManager);
-
-    // Need UASManager
-    UASMessageHandler* messageHandler = UASMessageHandler::_createSingleton();
-    Q_UNUSED(messageHandler);
-    Q_ASSERT(messageHandler);
-
-    // Needs UASManager
-    FactSystem* factSystem = FactSystem::_createSingleton();
-    Q_UNUSED(factSystem);
-    Q_ASSERT(factSystem);
-
-    // Needs everything!
-    MAVLinkProtocol* mavlink = MAVLinkProtocol::_createSingleton();
-    Q_UNUSED(mavlink);
-    Q_ASSERT(mavlink);
-
-}
-
-void QGCApplication::_destroySingletons(void)
-{
-    if (MainWindow::instance()) {
-        delete MainWindow::instance();
-    }
-
-    if (LinkManager::instance(true /* nullOk */)) {
-        // This will close/delete all connections
-        LinkManager::instance()->_shutdown();
-    }
-
-    if (UASManager::instance(true /* nullOk */)) {
-        // This will delete all uas from the system
-        UASManager::instance()->_shutdown();
-    }
-
-    // Let the signals flow through the main thread
-    processEvents(QEventLoop::ExcludeUserInputEvents);
-
-    // Take down singletons in reverse order of creation
-
-    MAVLinkProtocol::_deleteSingleton();
-    FactSystem::_deleteSingleton();
-    UASMessageHandler::_deleteSingleton();
-    AutoPilotPluginManager::_deleteSingleton();
-    UASManager::_deleteSingleton();
-    LinkManager::_deleteSingleton();
-    GAudioOutput::_deleteSingleton();
-}
-
-void QGCApplication::informationMessageBoxOnMainThread(const QString& title, const QString& msg)
-{
-    QGCMessageBox::information(title, msg);
-}
-
-void QGCApplication::warningMessageBoxOnMainThread(const QString& title, const QString& msg)
-{
-    QGCMessageBox::warning(title, msg);
-}
-
-void QGCApplication::criticalMessageBoxOnMainThread(const QString& title, const QString& msg)
-{
-    QGCMessageBox::critical(title, msg);
-}
-
-void QGCApplication::saveTempFlightDataLogOnMainThread(QString tempLogfile)
-{
-    bool saveError;
-    do{
-        saveError = false;
-        QString saveFilename = QGCFileDialog::getSaveFileName(
-            MainWindow::instance(),
-            tr("Save Flight Data Log"),
-            qgcApp()->mavlinkLogFilesLocation(),
-            tr("Flight Data Log Files (*.mavlink)"),
-            "mavlink");
-    
-        if (!saveFilename.isEmpty()) {
-            // if file exsits already, try to remove it first to overwrite it
-            if(QFile::exists(saveFilename) && !QFile::remove(saveFilename)){
-                // if the file cannot be removed, prompt user and ask new path
-                saveError = true;
-                QGCMessageBox::warning("File Error","Could not overwrite existing file.\nPlease provide a different file name to save to.");
-            } else if(!QFile::copy(tempLogfile, saveFilename)) {
-                // if file could not be copied, prompt user and ask new path
-                saveError = true;
-                QGCMessageBox::warning("File Error","Could not create file.\nPlease provide a different file name to save to.");
-            }
-        }
-    } while(saveError); // if the file could not be overwritten, ask for new file
-    QFile::remove(tempLogfile);
-}
-
-void QGCApplication::setStyle(bool styleIsDark)
-{
-    QSettings settings;
-
-    settings.setValue(_styleKey, styleIsDark);
-    _styleIsDark = styleIsDark;
-    _loadCurrentStyle();
-    emit styleChanged(_styleIsDark);
-}
-
-void QGCApplication::_loadCurrentStyle(void)
-{
-    bool success = true;
-    QString styles;
-
-    // Signal to the user that the app will pause to apply a new stylesheet
-    setOverrideCursor(Qt::WaitCursor);
-
-    // The dark style sheet is the master. Any other selected style sheet just overrides
-    // the colors of the master sheet.
-    QFile masterStyleSheet(_darkStyleFile);
-    if (masterStyleSheet.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        styles = masterStyleSheet.readAll();
-    } else {
-        qDebug() << "Unable to load master dark style sheet";
-        success = false;
-    }
-
-    if (success && !_styleIsDark) {
-        qDebug() << "LOADING LIGHT";
-        // Load the slave light stylesheet.
-        QFile styleSheet(_lightStyleFile);
-        if (styleSheet.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            styles += styleSheet.readAll();
-        } else {
-            qDebug() << "Unable to load slave light sheet:";
-            success = false;
-        }
-    }
-    
-    // Now that we have the styles loaded we need to adjust the font sizes.
-    
-    QString fSmall  = QString("%1px;").arg(ScreenToolsController::smallFontPixelSize_s());
-    QString fNormal = QString("%1px;").arg(ScreenToolsController::defaultFontPixelSize_s());
-    QString fLarge  = QString("%1px;").arg(ScreenToolsController::largeFontPixelSize_s());
-    
-    qDebug() << fSmall << fNormal << fLarge;
-
-    styles.replace("FONT_SMALL",  fSmall);
-    styles.replace("FONT_NORMAL", fNormal);
-    styles.replace("FONT_LARGE",  fLarge);
-    setStyleSheet(styles);
-
-    if (!success) {
-        // Fall back to plastique if we can't load our own
-        setStyle("plastique");
-    }
-
-    QGCPalette::setGlobalTheme(_styleIsDark ? QGCPalette::Dark : QGCPalette::Light);
-
-    // Finally restore the cursor before returning.
-    restoreOverrideCursor();
-}
-
 void QGCApplication::reportMissingParameter(int componentId, const QString& name)
 {
-    _missingParams += QString("%1:%2").arg(componentId).arg(name);
+    QPair<int, QString>  missingParam(componentId, name);
+
+    if (!_missingParams.contains(missingParam)) {
+        _missingParams.append(missingParam);
+    }
     _missingParamsDelayedDisplayTimer.start();
 }
 
 /// Called when the delay timer fires to show the missing parameters warning
 void QGCApplication::_missingParamsDisplay(void)
 {
-    Q_ASSERT(_missingParams.count());
-    
-    QString params;
-    foreach (QString name, _missingParams) {
-        if (params.isEmpty()) {
-            params += name;
-        } else {
-            params += QString(", %1").arg(name);
+    if (_missingParams.count()) {
+        QString params;
+        for (QPair<int, QString>& missingParam: _missingParams) {
+            QString param = QStringLiteral("%1:%2").arg(missingParam.first).arg(missingParam.second);
+            if (params.isEmpty()) {
+                params += param;
+            } else {
+                params += QStringLiteral(", %1").arg(param);
+            }
+
+        }
+        _missingParams.clear();
+
+        showAppMessage(tr("Parameters are missing from firmware. You may be running a version of firmware which is not fully supported or your firmware has a bug in it. Missing params: %1").arg(params));
+    }
+}
+
+QObject* QGCApplication::_rootQmlObject()
+{
+    if (_qmlAppEngine && _qmlAppEngine->rootObjects().size())
+        return _qmlAppEngine->rootObjects()[0];
+    return nullptr;
+}
+
+void QGCApplication::showCriticalVehicleMessage(const QString& message)
+{
+    // PreArm messages are handled by Vehicle and shown in Map
+    if (message.startsWith(QStringLiteral("PreArm")) || message.startsWith(QStringLiteral("preflight"), Qt::CaseInsensitive)) {
+        return;
+    }
+    QObject* rootQmlObject = _rootQmlObject();
+    if (rootQmlObject) {
+        QVariant varReturn;
+        QVariant varMessage = QVariant::fromValue(message);
+        QMetaObject::invokeMethod(_rootQmlObject(), "showCriticalVehicleMessage", Q_RETURN_ARG(QVariant, varReturn), Q_ARG(QVariant, varMessage));
+    } else if (runningUnitTests()) {
+        // Unit tests can run without UI
+        qDebug() << "QGCApplication::showCriticalVehicleMessage unittest" << message;
+    } else {
+        qWarning() << "Internal error";
+    }
+}
+
+void QGCApplication::showAppMessage(const QString& message, const QString& title)
+{
+    QString dialogTitle = title.isEmpty() ? applicationName() : title;
+
+    QObject* rootQmlObject = _rootQmlObject();
+    if (rootQmlObject) {
+        QVariant varReturn;
+        QVariant varMessage = QVariant::fromValue(message);
+        QMetaObject::invokeMethod(_rootQmlObject(), "showMessageDialog", Q_RETURN_ARG(QVariant, varReturn), Q_ARG(QVariant, dialogTitle), Q_ARG(QVariant, varMessage));
+    } else if (runningUnitTests()) {
+        // Unit tests can run without UI
+        qDebug() << "QGCApplication::showAppMessage unittest title:message" << dialogTitle << message;
+    } else {
+        // UI isn't ready yet
+        _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, message));
+        QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
+    }
+}
+
+void QGCApplication::showRebootAppMessage(const QString& message, const QString& title)
+{
+    static QTime lastRebootMessage;
+
+    QTime currentTime = QTime::currentTime();
+    QTime previousTime = lastRebootMessage;
+    lastRebootMessage = currentTime;
+
+    if (previousTime.isValid() && previousTime.msecsTo(currentTime) < 60 * 1000 * 2) {
+        // Debounce reboot messages
+        return;
+    }
+
+    showAppMessage(message, title);
+}
+
+void QGCApplication::_showDelayedAppMessages(void)
+{
+    if (_rootQmlObject()) {
+        for (const QPair<QString, QString>& appMsg: _delayedAppMessages) {
+            showAppMessage(appMsg.second, appMsg.first);
+        }
+        _delayedAppMessages.clear();
+    } else {
+        QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
+    }
+}
+
+QQuickWindow* QGCApplication::mainRootWindow()
+{
+    if(!_mainRootWindow) {
+        _mainRootWindow = qobject_cast<QQuickWindow*>(_rootQmlObject());
+    }
+    // _mainRootWindow->setFlags(Qt::SubWindow);
+    return _mainRootWindow;
+}
+
+void QGCApplication::showSetupView()
+{
+    if(_rootQmlObject()) {
+        QMetaObject::invokeMethod(_rootQmlObject(), "showSetupTool");
+    }
+}
+
+void QGCApplication::qmlAttemptWindowClose()
+{
+    if(_rootQmlObject()) {
+        QMetaObject::invokeMethod(_rootQmlObject(), "attemptWindowClose");
+    }
+}
+
+bool QGCApplication::isInternetAvailable()
+{
+    if(_toolbox->settingsManager()->appSettings()->checkInternet()->rawValue().toBool())
+        return getQGCMapEngine()->isInternetActive();
+    return true;
+}
+
+void QGCApplication::_checkForNewVersion()
+{
+#ifndef __mobile__
+    if (!_runningUnitTests) {
+        if (_parseVersionText(applicationVersion(), _majorVersion, _minorVersion, _buildVersion)) {
+            QString versionCheckFile = toolbox()->corePlugin()->stableVersionCheckFileUrl();
+            if (!versionCheckFile.isEmpty()) {
+                QGCFileDownload* download = new QGCFileDownload(this);
+                connect(download, &QGCFileDownload::downloadComplete, this, &QGCApplication::_qgcCurrentStableVersionDownloadComplete);
+                download->download(versionCheckFile);
+            }
         }
     }
-    _missingParams.clear();
-    
-    QGCMessageBox::critical(
-        "Missing Parameters",
-        QString("Parameters missing from firmware: %1.\n\n"
-                "You should quit QGroundControl immediately and update your firmware.").arg(params));
+#endif
 }
 
-void QGCApplication::setMavManager(MavManager* pMgr)
+void QGCApplication::_qgcCurrentStableVersionDownloadComplete(QString /*remoteFile*/, QString localFile, QString errorMsg)
 {
-    if(!_pMavManager)
-        _pMavManager = pMgr;
+#ifdef __mobile__
+    Q_UNUSED(localFile)
+    Q_UNUSED(errorMsg)
+#else
+    if (errorMsg.isEmpty()) {
+        QFile versionFile(localFile);
+        if (versionFile.open(QIODevice::ReadOnly)) {
+            QTextStream textStream(&versionFile);
+            QString version = textStream.readLine();
+
+            qDebug() << version;
+
+            int majorVersion, minorVersion, buildVersion;
+            if (_parseVersionText(version, majorVersion, minorVersion, buildVersion)) {
+                if (_majorVersion < majorVersion ||
+                        (_majorVersion == majorVersion && _minorVersion < minorVersion) ||
+                        (_majorVersion == majorVersion && _minorVersion == minorVersion && _buildVersion < buildVersion)) {
+                    showAppMessage(tr("There is a newer version of %1 available. You can download it from %2.").arg(applicationName()).arg(toolbox()->corePlugin()->stableDownloadLocation()), tr("New Version Available"));
+                }
+            }
+        }
+    } else {
+        qDebug() << "Download QGC stable version failed" << errorMsg;
+    }
+
+    sender()->deleteLater();
+#endif
 }
 
-MavManager* QGCApplication::getMavManager()
+bool QGCApplication::_parseVersionText(const QString& versionString, int& majorVersion, int& minorVersion, int& buildVersion)
 {
-    return _pMavManager;
+    QRegularExpression regExp("v(\\d+)\\.(\\d+)\\.(\\d+)");
+    QRegularExpressionMatch match = regExp.match(versionString);
+    if (match.hasMatch() && match.lastCapturedIndex() == 3) {
+        majorVersion = match.captured(1).toInt();
+        minorVersion = match.captured(2).toInt();
+        buildVersion = match.captured(3).toInt();
+        return true;
+    }
+
+    return false;
+}
+
+
+void QGCApplication::_onGPSConnect()
+{
+    _gpsRtkFactGroup->connected()->setRawValue(true);
+}
+
+void QGCApplication::_onGPSDisconnect()
+{
+    _gpsRtkFactGroup->connected()->setRawValue(false);
+}
+
+void QGCApplication::_gpsSurveyInStatus(float duration, float accuracyMM,  double latitude, double longitude, float altitude, bool valid, bool active)
+{
+    _gpsRtkFactGroup->currentDuration()->setRawValue(duration);
+    _gpsRtkFactGroup->currentAccuracy()->setRawValue(static_cast<double>(accuracyMM) / 1000.0);
+    _gpsRtkFactGroup->currentLatitude()->setRawValue(latitude);
+    _gpsRtkFactGroup->currentLongitude()->setRawValue(longitude);
+    _gpsRtkFactGroup->currentAltitude()->setRawValue(altitude);
+    _gpsRtkFactGroup->valid()->setRawValue(valid);
+    _gpsRtkFactGroup->active()->setRawValue(active);
+}
+
+void QGCApplication::_gpsNumSatellites(int numSatellites)
+{
+    _gpsRtkFactGroup->numSatellites()->setRawValue(numSatellites);
+}
+
+QString QGCApplication::cachedParameterMetaDataFile(void)
+{
+    QSettings settings;
+    QDir parameterDir = QFileInfo(settings.fileName()).dir();
+    return parameterDir.filePath(QStringLiteral("ParameterFactMetaData.xml"));
+}
+
+QString QGCApplication::cachedAirframeMetaDataFile(void)
+{
+    QSettings settings;
+    QDir airframeDir = QFileInfo(settings.fileName()).dir();
+    return airframeDir.filePath(QStringLiteral("PX4AirframeFactMetaData.xml"));
+}
+
+/// Returns a signal index that is can be compared to QMetaCallEvent.signalId
+int QGCApplication::CompressedSignalList::_signalIndex(const QMetaMethod & method)
+{
+    if (method.methodType() != QMetaMethod::Signal) {
+        qWarning() << "Internal error: QGCApplication::CompressedSignalList::_signalIndex not a signal" << method.methodType();
+        return -1;
+    }
+
+    int index = -1;
+    const QMetaObject* metaObject = method.enclosingMetaObject();
+    for (int i=0; i<=method.methodIndex(); i++) {
+        if (metaObject->method(i).methodType() != QMetaMethod::Signal) {
+            continue;
+        }
+        index++;
+    }
+    return index;
+}
+
+void QGCApplication::CompressedSignalList::add(const QMetaMethod & method)
+{
+    const QMetaObject*  metaObject  = method.enclosingMetaObject();
+    int                 signalIndex = _signalIndex(method);
+
+    if (signalIndex != -1 && !contains(metaObject, signalIndex)) {
+        _signalMap[method.enclosingMetaObject()].insert(signalIndex);
+    }
+}
+
+void QGCApplication::CompressedSignalList::remove(const QMetaMethod & method)
+{
+    int                 signalIndex = _signalIndex(method);
+    const QMetaObject*  metaObject  = method.enclosingMetaObject();
+
+    if (signalIndex != -1 && _signalMap.contains(metaObject) && _signalMap[metaObject].contains(signalIndex)) {
+        _signalMap[metaObject].remove(signalIndex);
+        if (_signalMap[metaObject].count() == 0) {
+            _signalMap.remove(metaObject);
+        }
+    }
+}
+
+bool QGCApplication::CompressedSignalList::contains(const QMetaObject* metaObject, int signalIndex)
+{
+    return _signalMap.contains(metaObject) && _signalMap[metaObject].contains(signalIndex);
+}
+
+void QGCApplication::addCompressedSignal(const QMetaMethod & method)
+{
+    _compressedSignals.add(method);
+}
+
+void QGCApplication::removeCompressedSignal(const QMetaMethod & method)
+{
+    _compressedSignals.remove(method);
+}
+
+bool QGCApplication::compressEvent(QEvent*event, QObject* receiver, QPostEventList* postedEvents)
+{
+    if (event->type() != QEvent::MetaCall) {
+        return QApplication::compressEvent(event, receiver, postedEvents);
+    }
+
+    QMetaCallEvent* mce = static_cast<QMetaCallEvent*>(event);
+    if (!mce->sender() || !_compressedSignals.contains(mce->sender()->metaObject(), mce->signalId())) {
+        return QApplication::compressEvent(event, receiver, postedEvents);
+    }
+
+    for (QPostEventList::iterator it = postedEvents->begin(); it != postedEvents->end(); ++it) {
+        QPostEvent &cur = *it;
+        if (cur.receiver != receiver || cur.event == 0 || cur.event->type() != event->type()) {
+            continue;
+        }
+        QMetaCallEvent *cur_mce = static_cast<QMetaCallEvent*>(cur.event);
+        if (cur_mce->sender() != mce->sender() || cur_mce->signalId() != mce->signalId() || cur_mce->id() != mce->id()) {
+            continue;
+        }
+        /* Keep The Newest Call */
+        // We can't merely qSwap the existing posted event with the new one, since QEvent
+        // keeps track of whether it has been posted. Deletion of a formerly posted event
+        // takes the posted event list mutex and does a useless search of the posted event
+        // list upon deletion. We thus clear the QEvent::posted flag before deletion.
+        struct EventHelper : private QEvent {
+            static void clearPostedFlag(QEvent * ev) {
+                (&static_cast<EventHelper*>(ev)->t)[1] &= ~0x8001; // Hack to clear QEvent::posted
+            }
+        };
+        EventHelper::clearPostedFlag(cur.event);
+        delete cur.event;
+        cur.event = event;
+        return true;
+    }
+
+    return false;
+}
+
+bool QGCApplication::event(QEvent *e)
+{
+    if (e->type() == QEvent::Quit) {
+        // On OSX if the user selects Quit from the menu (or Command-Q) the ApplicationWindow does not signal closing. Instead you get a Quit even here only.
+        // This in turn causes the standard QGC shutdown sequence to not run. So in this case we close the window ourselves such that the
+        // signal is sent and the normal shutdown sequence runs.
+        bool forceClose = _mainRootWindow->property("_forceClose").toBool();
+        qDebug() << "Quit event" << forceClose;
+        // forceClose
+        //  true:   Standard QGC shutdown sequence is complete. Let the app quit normally by falling through to the base class processing.
+        //  false:  QGC shutdown sequence has not been run yet. Don't let this event close the app yet. Close the main window to kick off the normal shutdown.
+        if (!forceClose) {
+            //
+            _mainRootWindow->close();
+            e->ignore();
+            return true;
+        }
+    }
+    return QApplication::event(e);
 }

@@ -1,35 +1,15 @@
-/*=====================================================================
- 
- QGroundControl Open Source Ground Control Station
- 
- (c) 2009 - 2015 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- 
- This file is part of the QGROUNDCONTROL project
- 
- QGROUNDCONTROL is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
- 
- QGROUNDCONTROL is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
- 
- ======================================================================*/
+/****************************************************************************
+ *
+ *   (c) 2009-2016 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
 
-// The above copyright block should be at the top of every file.
-
-/// @file
-///     @brief This is an example class c++ file which is used to describe the QGroundControl
-///             coding style. In general almost everything in here has some coding style meaning.
-///             For example, note how this doxygen block uses the /// variant as the preferred style
-///             of doxygen marker. Not all style choices are explained.
-///
-///     @author Don Gagne <don@thegagnes.com>
+// This is an example class c++ file which is used to describe the QGroundControl
+// coding style. In general almost everything in here has some coding style meaning.
+// Not all style choices are explained.
 
 #include "CodingStyle.h"
 #include "QGCApplication.h"
@@ -39,7 +19,7 @@
 
 #include <math.h>
 
-// Note how the Qt headers and the QGroundControl headers above are kept seperate
+// Note how the Qt headers and the QGroundControl headers above are kept separate
 
 Q_LOGGING_CATEGORY(CodingStyleLog, "CodingStyleLog")
 
@@ -105,8 +85,11 @@ void CodingStyle::_methodWithManyArguments(QWidget*         parent,
                                            const QString&   caption,
                                            const QString&   dir,
                                            Options          options1,
-                                           Options          options2,
+                                           Options          /* options2 */,
                                            Options          options3)
 {
+    // options2 is an unused method argument.
+    // Do not use Q_UNUSUED and do not just remove the argument name and leave the type.
+
     // Implementataion here...
 }

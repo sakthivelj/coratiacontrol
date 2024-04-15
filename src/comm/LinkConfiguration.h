@@ -1,112 +1,90 @@
-/*=====================================================================
+/****************************************************************************
+ *
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
 
-QGroundControl Open Source Ground Control Station
-
-(c) 2009, 2015 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
-
-This file is part of the QGROUNDCONTROL project
-
-    QGROUNDCONTROL is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    QGROUNDCONTROL is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
-
-======================================================================*/
-
-#ifndef LINKCONFIGURATION_H
-#define LINKCONFIGURATION_H
+#pragma once
 
 #include <QSettings>
+
+#include <memory>
 
 class LinkInterface;
 
 /// Interface holding link specific settings.
-
-class LinkConfiguration
+class LinkConfiguration : public QObject
 {
+    Q_OBJECT
+
 public:
     LinkConfiguration(const QString& name);
     LinkConfiguration(LinkConfiguration* copy);
     virtual ~LinkConfiguration() {}
 
+    Q_PROPERTY(QString          name                READ name           WRITE setName           NOTIFY nameChanged)
+    Q_PROPERTY(LinkInterface*   link                READ link                                   NOTIFY linkChanged)
+    Q_PROPERTY(LinkType         linkType            READ type                                   CONSTANT)
+    Q_PROPERTY(bool             dynamic             READ isDynamic      WRITE setDynamic        NOTIFY dynamicChanged)
+    Q_PROPERTY(bool             autoConnect         READ isAutoConnect  WRITE setAutoConnect    NOTIFY autoConnectChanged)
+    Q_PROPERTY(QString          settingsURL         READ settingsURL                            CONSTANT)
+    Q_PROPERTY(QString          settingsTitle       READ settingsTitle                          CONSTANT)
+    Q_PROPERTY(bool             highLatency         READ isHighLatency  WRITE setHighLatency    NOTIFY highLatencyChanged)
+
+    // Property accessors
+
+    QString         name(void) const { return _name; }
+    LinkInterface*  link(void)  { return _link.lock().get(); }
+
+    void            setName(const QString name);
+    void            setLink(std::shared_ptr<LinkInterface> link);
+
     ///  The link types supported by QGC
-    enum {
-#ifndef __ios__
+    ///  Any changes here MUST be reflected in LinkManager::linkTypeStrings()
+    enum LinkType {
+#ifndef NO_SERIAL_LINK
         TypeSerial,     ///< Serial Link
 #endif
         TypeUdp,        ///< UDP Link
         TypeTcp,        ///< TCP Link
-        // TODO Below is not yet implemented
-#if 0
-        TypeForwarding, ///< Forwarding Link
-        TypeXbee,       ///< XBee Proprietary Link
-        TypeOpal,       ///< Opal-RT Link
+#ifdef QGC_ENABLE_BLUETOOTH
+        TypeBluetooth,  ///< Bluetooth Link
 #endif
+#ifdef QT_DEBUG
         TypeMock,       ///< Mock Link for Unitesting
+#endif
+        TypeLogReplay,
         TypeLast        // Last type value (type >= TypeLast == invalid)
     };
+    Q_ENUM(LinkType)
 
-    /*!
-     * @brief Get configuration name
-     *
-     * This is the user friendly name shown in the connection drop down box and the name used to save the configuration in the settings.
-     * @return The name of this link.
-     */
-    const QString name()  { return _name; }
-
-    /*!
-     * @brief Set the name of this link configuration.
-     *
-     * This is the user friendly name shown in the connection drop down box and the name used to save the configuration in the settings.
-     * @param[in] name The configuration name
-     */
-    void setName(const QString name)  {_name = name; }
-
-    /*!
-     * @brief Set the link this configuration is currently attched to.
-     *
-     * @param[in] link The pointer to the current LinkInterface instance (if any)
-     */
-    void setLink(LinkInterface* link) { _link = link; }
-
-    /*!
-     * @brief Get the link this configuration is currently attched to.
-     *
-     * @return The pointer to the current LinkInterface instance (if any)
-     */
-    LinkInterface* getLink() { return _link; }
+    bool isDynamic      () const{ return _dynamic; }     ///< Not persisted
+    bool isAutoConnect  () const{ return _autoConnect; }
 
     /*!
      *
-     * Is this a preferred configuration? (decided at runtime)
-     * @return True if this is a known configuration (PX4, etc.)
+     * Is this a High Latency configuration?
+     * @return True if this is an High Latency configuration (link with large delays).
      */
-    bool isPreferred() { return _preferred; }
-
-    /*!
-     * Set if this is this a preferred configuration. (decided at runtime)
-    */
-    void setPreferred(bool preferred = true) { _preferred = preferred; }
-
-    /*!
-     *
-     * Is this a dynamic configuration? (non persistent)
-     * @return True if this is an automatically added configuration.
-     */
-    bool isDynamic() { return _dynamic; }
+    bool isHighLatency() const{ return _highLatency; }
 
     /*!
      * Set if this is this a dynamic configuration. (decided at runtime)
     */
-    void setDynamic(bool dynamic = true) { _dynamic = dynamic; }
+    void setDynamic(bool dynamic = true) { _dynamic = dynamic; emit dynamicChanged(); }
+
+    /*!
+     * Set if this is this an Auto Connect configuration.
+    */
+    void setAutoConnect(bool autoc = true) { _autoConnect = autoc; emit autoConnectChanged(); }
+
+    /*!
+     * Set if this is this an High Latency configuration.
+    */
+    void setHighLatency(bool hl = false) { _highLatency = hl; emit highLatencyChanged(); }
 
     /// Virtual Methods
 
@@ -116,7 +94,7 @@ public:
      * Pure virtual method returning one of the -TypeXxx types above.
      * @return The type of links these settings belong to.
      */
-    virtual int type() = 0;
+    virtual LinkType type() = 0;
 
     /*!
      * @brief Load settings
@@ -137,11 +115,18 @@ public:
     virtual void saveSettings(QSettings& settings, const QString& root) = 0;
 
     /*!
-     * @brief Update settings
+     * @brief Settings URL
      *
-     * After editing the settings, use this method to tell the connected link (if any) to reload its configuration.
+     * Pure virtual method providing the URL for the (QML) settings dialog
      */
-    virtual void updateSettings() {}
+    virtual QString settingsURL     () = 0;
+
+    /*!
+     * @brief Settings Title
+     *
+     * Pure virtual method providing the Title for the (QML) settings dialog
+     */
+    virtual QString settingsTitle   () = 0;
 
     /*!
      * @brief Copy instance data
@@ -177,12 +162,23 @@ public:
      */
     static LinkConfiguration* duplicateSettings(LinkConfiguration *source);
 
+signals:
+    void nameChanged        (const QString& name);
+    void dynamicChanged     ();
+    void autoConnectChanged ();
+    void highLatencyChanged ();
+    void linkChanged        ();
+
 protected:
-    LinkInterface* _link; ///< Link currently using this configuration (if any)
+    std::weak_ptr<LinkInterface> _link; ///< Link currently using this configuration (if any)
+
 private:
     QString _name;
-    bool    _preferred;  ///< Determined internally if this is a preferred connection. It comes up first in the drop down box.
-    bool    _dynamic;    ///< A connection added automatically and not persistent (unless it's edited).
+    bool    _dynamic;       ///< A connection added automatically and not persistent (unless it's edited).
+    bool    _autoConnect;   ///< This connection is started automatically at boot
+    bool    _highLatency;
 };
 
-#endif // LINKCONFIGURATION_H
+typedef std::shared_ptr<LinkConfiguration>  SharedLinkConfigurationPtr;
+typedef std::weak_ptr<LinkConfiguration>    WeakLinkConfigurationPtr;
+

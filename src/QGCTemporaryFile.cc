@@ -1,25 +1,12 @@
-/*=====================================================================
- 
- QGroundControl Open Source Ground Control Station
- 
- (c) 2009 - 2014 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- 
- This file is part of the QGROUNDCONTROL project
- 
- QGROUNDCONTROL is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
- 
- QGROUNDCONTROL is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
- 
- ======================================================================*/
+/****************************************************************************
+ *
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
+
 
 /// @file
 ///     @brief This class mimics QTemporaryFile. We have our own implementation due to the fact that
@@ -31,6 +18,7 @@
 #include "QGCTemporaryFile.h"
 
 #include <QDir>
+#include <QRandomGenerator>
 #include <QStandardPaths>
 
 QGCTemporaryFile::QGCTemporaryFile(const QString& fileTemplate, QObject* parent) :
@@ -40,30 +28,43 @@ QGCTemporaryFile::QGCTemporaryFile(const QString& fileTemplate, QObject* parent)
 
 }
 
+QGCTemporaryFile::~QGCTemporaryFile()
+{
+    if (_autoRemove) {
+        remove();
+    }
+}
+
 bool QGCTemporaryFile::open(QFile::OpenMode openMode)
 {
+    setFileName(_newTempFileFullyQualifiedName(_template));
+    
+    return QFile::open(openMode);
+}
+
+QString QGCTemporaryFile::_newTempFileFullyQualifiedName(const QString& fileTemplate)
+{
+    QString nameTemplate = fileTemplate;
     QDir tempDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation));
-    
+
     // Generate unique, non-existing filename
-    
+
     static const char rgDigits[] = "0123456789";
-    
+
     QString tempFilename;
-    
+
     do {
         QString uniqueStr;
         for (int i=0; i<6; i++) {
-            uniqueStr += rgDigits[qrand() % 10];
+            uniqueStr += rgDigits[QRandomGenerator::global()->generate() % 10];
         }
-        
-        if (_template.contains("XXXXXX")) {
-            tempFilename = _template.replace("XXXXXX", uniqueStr, Qt::CaseSensitive);
+
+        if (fileTemplate.contains("XXXXXX")) {
+            tempFilename = nameTemplate.replace("XXXXXX", uniqueStr, Qt::CaseSensitive);
         } else {
-            tempFilename = _template + uniqueStr;
+            tempFilename = nameTemplate + uniqueStr;
         }
     } while (tempDir.exists(tempFilename));
 
-    setFileName(tempDir.filePath(tempFilename));
-    
-    return QFile::open(openMode);
+    return tempDir.filePath(tempFilename);
 }

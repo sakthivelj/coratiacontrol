@@ -1,50 +1,45 @@
-/*=====================================================================
- 
- QGroundControl Open Source Ground Control Station
- 
- (c) 2009 - 2015 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- 
- This file is part of the QGROUNDCONTROL project
- 
- QGROUNDCONTROL is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
- 
- QGROUNDCONTROL is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
- 
- ======================================================================*/
-
-/**
- * @file
- *   @brief Definition of main class
+/****************************************************************************
  *
- *   @author Lorenz Meier <mavteam@student.ethz.ch>
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
  *
- */
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
 
-#ifndef QGCAPPLICATION_H
-#define QGCAPPLICATION_H
+#pragma once
 
 #include <QApplication>
 #include <QTimer>
+#include <QElapsedTimer>
+#include <QMap>
+#include <QSet>
+#include <QMetaMethod>
+#include <QMetaObject>
+
+// These private headers are require to implement the signal compress support below
+#include <private/qthread_p.h>
+#include <private/qobject_p.h>
 
 #include "LinkConfiguration.h"
+#include "MAVLinkProtocol.h"
+#include "FlightMapSettings.h"
+#include "FirmwarePluginManager.h"
+#include "MultiVehicleManager.h"
+#include "JoystickManager.h"
+#include "AudioOutput.h"
+#include "UASMessageHandler.h"
+#include "FactSystem.h"
+#include "GPSRTKFactGroup.h"
 
 #ifdef QGC_RTLAB_ENABLED
 #include "OpalLink.h"
 #endif
 
 // Work around circular header includes
+class QQmlApplicationEngine;
 class QGCSingleton;
-class MainWindow;
-class MavManager;
+class QGCToolbox;
 
 /**
  * @brief The main application and management class.
@@ -52,128 +47,197 @@ class MavManager;
  * This class is started by the main method and provides
  * the central management unit of the groundstation application.
  *
- **/
+ * Needs QApplication base to support QtCharts module. This way
+ * we avoid application crashing on 5.12 when using the module.
+ *
+ * Note: `lastWindowClosed` will be sent by MessageBox popups and other
+ * dialogs, that are spawned in QML, when they are closed
+**/
 class QGCApplication : public QApplication
 {
     Q_OBJECT
-    
 public:
     QGCApplication(int &argc, char* argv[], bool unitTesting);
     ~QGCApplication();
-    
+
     /// @brief Sets the persistent flag to delete all settings the next time QGroundControl is started.
     void deleteAllSettingsNextBoot(void);
-    
+
     /// @brief Clears the persistent flag to delete all settings the next time QGroundControl is started.
     void clearDeleteAllSettingsNextBoot(void);
-    
-    /// @brief Returns the location of user visible saved file associated with QGroundControl
-    QString savedFilesLocation(void);
-    
-    /// @brief Sets the location of user visible saved file associated with QGroundControl
-    void setSavedFilesLocation(QString& location);
-    
-    /// @brief Location to save and load parameter files from.
-    QString savedParameterFilesLocation(void);
-    
-    /// @brief Location to save and load mavlink log files from
-    QString mavlinkLogFilesLocation(void);
-    
-    /// @brief Validates that the specified location will work for the saved files location.
-    bool validatePossibleSavedFilesLocation(QString& location);
-    
-    /// @brief Returns true is all mavlink connections should be logged
-    bool promptFlightDataSave(void);
-    
-    /// @brief Sets the flag to log all mavlink connections
-    void setPromptFlightDataSave(bool promptForSave);
 
-    /// @brief Returns truee if unit test are being run
-    bool runningUnitTests(void) { return _runningUnitTests; }
-    
-    /// @return true: dark ui style, false: light ui style
-    bool styleIsDark(void) { return _styleIsDark; }
-    
-    /// Set the current UI style
-    void setStyle(bool styleIsDark);
-    
+    /// @brief Returns true if unit tests are being run
+    bool runningUnitTests(void) const{ return _runningUnitTests; }
+
+    /// @brief Returns true if Qt debug output should be logged to a file
+    bool logOutput(void) const{ return _logOutput; }
+
     /// Used to report a missing Parameter. Warning will be displayed to user. Method may be called
     /// multiple times.
     void reportMissingParameter(int componentId, const QString& name);
 
-    /// When the singleton is created, it sets a pointer for subsequent use
-    void setMavManager(MavManager* pMgr);
+    /// @return true: Fake ui into showing mobile interface
+    bool fakeMobile(void) const { return _fakeMobile; }
 
-    /// MavManager accessor
-    MavManager* getMavManager();
-    
+    // Still working on getting rid of this and using dependency injection instead for everything
+    QGCToolbox* toolbox(void) { return _toolbox; }
+
+    /// Do we have Bluetooth Support?
+    bool isBluetoothAvailable() const{ return _bluetoothAvailable; }
+
+    /// Is Internet available?
+    bool isInternetAvailable();
+
+    FactGroup* gpsRtkFactGroup(void)  { return _gpsRtkFactGroup; }
+
+    QTranslator& qgcJSONTranslator(void) { return _qgcTranslatorJSON; }
+
+    void            setLanguage();
+    QQuickWindow*   mainRootWindow();
+    uint64_t        msecsSinceBoot(void) { return _msecsElapsedTime.elapsed(); }
+
+    /// Registers the signal such that only the last duplicate signal added is left in the queue.
+    void addCompressedSignal(const QMetaMethod & method);
+
+    void removeCompressedSignal(const QMetaMethod & method);
+
+    bool event(QEvent *e) override;
+
+    static QString cachedParameterMetaDataFile(void);
+    static QString cachedAirframeMetaDataFile(void);
+
 public slots:
     /// You can connect to this slot to show an information message box from a different thread.
     void informationMessageBoxOnMainThread(const QString& title, const QString& msg);
-    
+
     /// You can connect to this slot to show a warning message box from a different thread.
     void warningMessageBoxOnMainThread(const QString& title, const QString& msg);
-    
+
     /// You can connect to this slot to show a critical message box from a different thread.
     void criticalMessageBoxOnMainThread(const QString& title, const QString& msg);
-    
-    /// Save the specified Flight Data Log
-    void saveTempFlightDataLogOnMainThread(QString tempLogfile);
-    
+
+    void showSetupView();
+
+    void qmlAttemptWindowClose();
+
+    /// Save the specified telemetry Log
+    void saveTelemetryLogOnMainThread(QString tempLogfile);
+
+    /// Check that the telemetry save path is set correctly
+    void checkTelemetrySavePathOnMainThread();
+
+    /// Get current language
+    const QLocale getCurrentLanguage() { return _locale; }
+
+    /// Show non-modal vehicle message to the user
+    void showCriticalVehicleMessage(const QString& message);
+
+    /// Show modal application message to the user
+    void showAppMessage(const QString& message, const QString& title = QString());
+
+    /// Show modal application message to the user about the need for a reboot. Multiple messages will be supressed if they occur
+    /// one after the other.
+    void showRebootAppMessage(const QString& message, const QString& title = QString());
+
 signals:
-    /// Signals that the style has changed
-    ///     @param darkStyle true: dark style, false: light style
-    void styleChanged(bool darkStyle);
-    
     /// This is connected to MAVLinkProtocol::checkForLostLogFiles. We signal this to ourselves to call the slot
     /// on the MAVLinkProtocol thread;
-    void checkForLostLogFiles(void);
-    
+    void checkForLostLogFiles   ();
+
+    void languageChanged        (const QLocale locale);
+
 public:
     // Although public, these methods are internal and should only be called by UnitTest code
-    
+
     /// @brief Perform initialize which is common to both normal application running and unit tests.
     ///         Although public should only be called by main.
-    void _initCommon(void);
+    void _initCommon();
 
-    /// @brief Intialize the application for normal application boot. Or in other words we are not going to run
+    /// @brief Initialize the application for normal application boot. Or in other words we are not going to run
     ///         unit tests. Although public should only be called by main.
-    bool _initForNormalAppBoot(void);
-    
-    /// @brief Intialize the application for normal application boot. Or in other words we are not going to run
+    bool _initForNormalAppBoot();
+
+    /// @brief Initialize the application for normal application boot. Or in other words we are not going to run
     ///         unit tests. Although public should only be called by main.
-    bool _initForUnitTests(void);
-    
+    bool _initForUnitTests();
+
     static QGCApplication*  _app;   ///< Our own singleton. Should be reference directly by qgcApp
-    
+
+    bool    isErrorState() const { return _error; }
+
+    QQmlApplicationEngine* qmlAppEngine() { return _qmlAppEngine; }
+
+public:
+    // Although public, these methods are internal and should only be called by UnitTest code
+
+    /// Shutdown the application object
+    void _shutdown();
+
+    bool _checkTelemetrySavePath(bool useMessageBox);
+
 private slots:
-    void _missingParamsDisplay(void);
-    
+    void _missingParamsDisplay                      (void);
+    void _qgcCurrentStableVersionDownloadComplete   (QString remoteFile, QString localFile, QString errorMsg);
+    bool _parseVersionText                          (const QString& versionString, int& majorVersion, int& minorVersion, int& buildVersion);
+    void _onGPSConnect                              (void);
+    void _onGPSDisconnect                           (void);
+    void _gpsSurveyInStatus                         (float duration, float accuracyMM,  double latitude, double longitude, float altitude, bool valid, bool active);
+    void _gpsNumSatellites                          (int numSatellites);
+    void _showDelayedAppMessages                    (void);
+
 private:
-    void _createSingletons(void);
-    void _destroySingletons(void);
-    void _loadCurrentStyle(void);
-    
+    QObject*    _rootQmlObject          ();
+    void        _checkForNewVersion     ();
+    void        _exitWithError          (QString errorMessage);
+
+    // Overrides from QApplication
+    bool compressEvent(QEvent *event, QObject *receiver, QPostEventList *postedEvents) override;
+
+    bool                        _runningUnitTests;                                  ///< true: running unit tests, false: normal app
+    static const int            _missingParamsDelayedDisplayTimerTimeout = 1000;    ///< Timeout to wait for next missing fact to come in before display
+    QTimer                      _missingParamsDelayedDisplayTimer;                  ///< Timer use to delay missing fact display
+    QList<QPair<int,QString>>   _missingParams;                                     ///< List of missing parameter component id:name
+
+    QQmlApplicationEngine* _qmlAppEngine        = nullptr;
+    bool                _logOutput              = false;    ///< true: Log Qt debug output to file
+    bool				_fakeMobile             = false;    ///< true: Fake ui into displaying mobile interface
+    bool                _settingsUpgraded       = false;    ///< true: Settings format has been upgrade to new version
+    int                 _majorVersion           = 0;
+    int                 _minorVersion           = 0;
+    int                 _buildVersion           = 0;
+    GPSRTKFactGroup*    _gpsRtkFactGroup        = nullptr;
+    QGCToolbox*         _toolbox                = nullptr;
+    QQuickWindow*       _mainRootWindow         = nullptr;
+    bool                _bluetoothAvailable     = false;
+    QTranslator         _qgcTranslatorSourceCode;           ///< translations for source code C++/Qml
+    QTranslator         _qgcTranslatorJSON;                 ///< translations for json files
+    QTranslator         _qgcTranslatorQtLibs;               ///< tranlsations for Qt libraries
+    QLocale             _locale;
+    bool                _error                  = false;
+    QElapsedTimer       _msecsElapsedTime;
+
+    QList<QPair<QString /* title */, QString /* message */>> _delayedAppMessages;
+
+    class CompressedSignalList {
+        Q_DISABLE_COPY(CompressedSignalList)
+
+    public:
+        CompressedSignalList() {}
+
+        void add        (const QMetaMethod & method);
+        void remove     (const QMetaMethod & method);
+        bool contains   (const QMetaObject * metaObject, int signalIndex);
+
+    private:
+        static int _signalIndex(const QMetaMethod & method);
+
+        QMap<const QMetaObject*, QSet<int> > _signalMap;
+    };
+
+    CompressedSignalList _compressedSignals;
+
     static const char* _settingsVersionKey;             ///< Settings key which hold settings version
     static const char* _deleteAllSettingsKey;           ///< If this settings key is set on boot, all settings will be deleted
-    static const char* _savedFilesLocationKey;          ///< Settings key for user visible saved files location
-    static const char* _promptFlightDataSave;           ///< Settings key to prompt for saving Flight Data Log for all flights
-    static const char* _styleKey;                       ///< Settings key for UI style
-    
-    static const char* _defaultSavedFileDirectoryName;      ///< Default name for user visible save file directory
-    static const char* _savedFileMavlinkLogDirectoryName;   ///< Name of mavlink log subdirectory
-    static const char* _savedFileParameterDirectoryName;    ///< Name of parameter subdirectory
-    
-    bool _runningUnitTests; ///< true: running unit tests, false: normal app
-    
-    static const char*  _darkStyleFile;
-    static const char*  _lightStyleFile;
-    bool                _styleIsDark;      ///< true: dark style, false: light style
-    
-    static const int    _missingParamsDelayedDisplayTimerTimeout = 1000;  ///< Timeout to wait for next missing fact to come in before display
-    QTimer              _missingParamsDelayedDisplayTimer;                ///< Timer use to delay missing fact display
-    QStringList         _missingParams;                                  ///< List of missing facts to be displayed
-    MavManager*         _pMavManager;
 
     /// Unit Test have access to creating and destroying singletons
     friend class UnitTest;
@@ -181,5 +245,3 @@ private:
 
 /// @brief Returns the QGCApplication object singleton.
 QGCApplication* qgcApp(void);
-
-#endif

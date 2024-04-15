@@ -62,6 +62,25 @@ public final class UsbId {
     public static final int VENDOR_PROLIFIC = 0x067b;
     public static final int PROLIFIC_PL2303 = 0x2303;
 
+    public static final int VENDOR_UBLOX = 0x1546;
+    public static final int DEVICE_UBLOX_5 = 0x01a5;
+    public static final int DEVICE_UBLOX_6 = 0x01a6;
+    public static final int DEVICE_UBLOX_7 = 0x01a7;
+    public static final int DEVICE_UBLOX_8 = 0x01a8;
+
+    public static final int VENDOR_OPENPILOT = 0x20A0;
+    public static final int DEVICE_REVOLUTION = 0x415E;
+    public static final int DEVICE_OPLINK = 0x415C;
+    public static final int DEVICE_SPARKY2 = 0x41D0;
+    public static final int DEVICE_CC3D = 0x415D;
+
+    public static final int VENDOR_ARDUPILOT_CHIBIOS1 = 0x0483;
+    public static final int VENDOR_ARDUPILOT_CHIBIOS2 = 0x1209;
+    public static final int DEVICE_ARDUPILOT_CHIBIOS =  0x5740;
+
+    public static final int VENDOR_DRAGONLINK = 0x1FC9;
+    public static final int DEVICE_DRAGONLINK = 0x0083;
+
     private UsbId() {
         throw new IllegalAccessError("Non-instantiable class.");
     }
